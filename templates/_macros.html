@@ -1,0 +1,14 @@
+{# A signed change. higher_is_better picks the colour; "since" is read out to screen readers. #}
+{% macro delta(value, since="", higher_is_better=true, decimals=1) -%}
+  {%- if value is none -%}
+    <span class="delta flat">—</span>
+  {%- else -%}
+    {%- set shown = ("%." ~ decimals ~ "f")|format(value|abs) if decimals else "{:,}".format(value|abs) -%}
+    {%- if value == 0 -%}
+      <span class="delta flat">no change<span class="visually-hidden">{{ " since " ~ since if since }}</span></span>
+    {%- else -%}
+      {%- set good = (value > 0) == higher_is_better -%}
+      <span class="delta {{ 'good' if good else 'bad' }}"><span aria-hidden="true">{{ "▲" if value > 0 else "▼" }}</span> {{ shown }}<span class="visually-hidden"> {{ "up" if value > 0 else "down" }}{{ " since " ~ since if since }}</span></span>
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}

@@ -1,2 +1,4 @@
 flask>=3.1
+google-api-python-client>=2.100   # Gmail import
+google-auth-oauthlib>=1.2
 matplotlib>=3.8  # optional: PNG chart for the command-line report

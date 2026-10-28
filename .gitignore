@@ -1,3 +1,6 @@
 .venv/
 __pycache__/
 reports/
+# Gmail sign-in and local mail settings — never commit
+secrets/
+mail_settings.json

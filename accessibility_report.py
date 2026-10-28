@@ -76,10 +76,15 @@ def slugify(text: str) -> str:
 
 
 def course_from_filename(path: Path) -> str:
-    """'course-report (Power Systems I 001 Fall 2026).json' -> 'Power Systems I 001 Fall 2026'."""
+    """'course-report (Power Systems I 001 Fall 2026).json' -> 'Power Systems I 001 Fall 2026'.
+
+    A timestamped snapshot ('<course>/2026-10-28_102800.json') is named by its folder.
+    """
     match = re.search(r"\((.+)\)", path.stem)
     if match:
         return match.group(1)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}_\d{6}", path.stem) and path.parent.name:
+        return path.parent.name
     return re.sub(r"[_-]+", " ", path.stem).replace("course report", "").strip() or path.stem
 
 
@@ -99,6 +104,21 @@ def md_table(headers: list[str], rows: list[list[str]], align: list[str] | None 
 def load(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         return json.load(f)
+
+
+def parse_export(raw: bytes) -> dict:
+    """Parse and sanity-check a course-report export; raises ValueError if it isn't one."""
+    try:
+        data = json.loads(raw.decode("utf-8-sig"))
+    except UnicodeDecodeError as e:
+        raise ValueError(f"not UTF-8 text ({e.reason})") from e
+    if not isinstance(data, dict) or not all(k in data for k in ("Overall Totals", "Cumulative Score")):
+        raise ValueError("doesn't look like a course-report export")
+    try:
+        summarize(data)
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(f"unexpected export contents ({e})") from e
+    return data
 
 
 def scored_months(data: dict) -> list[dict]:

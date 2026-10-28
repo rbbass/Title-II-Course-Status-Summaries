@@ -63,8 +63,13 @@ header.site {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 14px 24px;
+  display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline;
 }
 .brand { font-weight: 650; color: var(--text); text-decoration: none; }
+header.site nav { display: flex; gap: 16px; }
+header.site nav a { color: var(--muted); text-decoration: none; }
+header.site nav a:hover { color: var(--accent); text-decoration: underline; }
+header.site nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 
 main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 6px; }
@@ -77,6 +82,7 @@ h2 { font-size: 1.2rem; margin: 0 0 12px; }
 .flash { margin: 0 0 8px; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); }
 .flash.ok { border-left: 4px solid var(--up); }
 .flash.error { border-left: 4px solid var(--down); }
+.flash.notice { border-left: 4px solid var(--accent); }
 
 /* ---- tables */
 .table-wrap { overflow-x: auto; }
@@ -99,8 +105,8 @@ table.courses tbody tr:hover { background: var(--accent-soft); }
 .score-cell, .share { display: inline-flex; align-items: center; gap: 8px; }
 
 .delta { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.delta.up { color: var(--up); }
-.delta.down { color: var(--down); }
+.delta.good { color: var(--up); }
+.delta.bad { color: var(--down); }
 .delta.flat { color: var(--muted); }
 
 /* ---- forms */
@@ -118,7 +124,24 @@ button, .button {
 }
 button.secondary { background: transparent; color: var(--accent); }
 
+.actions form { margin: 0; }
+.actions .sub { flex-basis: 100%; text-align: right; margin: 0; }
+
+.settings label { display: block; font-weight: 600; margin: 12px 0 4px; }
+.settings input[type=text], .picker select {
+  font: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); width: 100%; max-width: 420px;
+}
+.settings .hint { margin-top: 4px; }
+.steps li { margin-bottom: 6px; }
+
 /* ---- report page */
+.picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; }
+.picker label { font-weight: 600; }
+.picker select { width: auto; max-width: 100%; }
+.picker .flash { flex-basis: 100%; margin: 0; }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .crumbs { font-size: 0.875rem; margin-bottom: 8px; }
 .report-head { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -165,7 +188,7 @@ svg.trend .end-label.overall { fill: var(--accent); font-weight: 700; }
 .notes h2 { font-size: 1rem; }
 
 @media print {
-  header.site, .crumbs, .actions, .skip { display: none; }
+  header.site, .crumbs, .actions, .picker, .skip { display: none; }
   body { background: #fff; color: #000; }
   .card, .kpi { break-inside: avoid; border-color: #ccc; }
   main { padding: 0; max-width: none; }

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Email · Course Accessibility Reports{% endblock %}
+
+{% block content %}
+  <h1>Email</h1>
+  <p class="lede">Course reports emailed to a Gmail account can be pulled in here. Each JSON attachment is
+    added to its course's history, stamped with the time the email arrived. Access is read-only.</p>
+
+  <section class="card" aria-labelledby="conn-h">
+    <h2 id="conn-h">Connection</h2>
+    {% if not mail.libraries %}
+      <p class="flash error">The Gmail libraries aren't installed. Run
+        <code>.venv\Scripts\pip install -r requirements.txt</code> and restart the app.</p>
+    {% elif mail.token %}
+      <p><strong>Connected.</strong> The saved sign-in is in <code>{{ token_file }}</code>.</p>
+      <div class="actions">
+        <form method="post" action="{{ url_for('email_check') }}">
+          <input type="hidden" name="next" value="{{ url_for('email') }}">
+          <button type="submit">Check email now</button>
+        </form>
+        <form method="post" action="{{ url_for('email_disconnect') }}">
+          <button type="submit" class="secondary">Disconnect</button>
+        </form>
+      </div>
+      {% if settings.last_check %}<p class="sub">Last checked {{ settings.last_check.replace("T", " ") }}.
+        {{ settings.seen|length }} email{{ "s" if settings.seen|length != 1 }} processed so far.</p>{% endif %}
+    {% elif mail.client %}
+      <p>Ready to connect. Clicking the button opens a Google sign-in tab in your browser; choose the account
+        that receives the reports and allow read-only access. Come back to this tab when it says you're done.</p>
+      <form method="post" action="{{ url_for('email_connect') }}"><button type="submit">Connect Gmail</button></form>
+    {% else %}
+      <p>One-time setup. You need an OAuth client from Google Cloud so this app can ask for read-only access:</p>
+      <ol class="steps">
+        <li>Go to <a href="https://console.cloud.google.com/" rel="noreferrer">console.cloud.google.com</a> and create
+          (or pick) a project.</li>
+        <li>Under <em>APIs &amp; Services → Library</em>, enable the <strong>Gmail API</strong>.</li>
+        <li>Under <em>APIs &amp; Services → OAuth consent screen</em>, configure it. For a pdx.edu account choose
+          <strong>Internal</strong> if available; otherwise <strong>External</strong> and add your address as a test user.</li>
+        <li>Under <em>Credentials</em>, choose <strong>Create credentials → OAuth client ID</strong> with application
+          type <strong>Desktop app</strong>, then download the JSON.</li>
+        <li>Save it as <code>{{ client_file }}</code> and reload this page.</li>
+      </ol>
+      <p class="hint">The <code>secrets/</code> folder is excluded from git. If your Google Workspace admin blocks
+        third-party apps, they may need to allow this one.</p>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="find-h">
+    <h2 id="find-h">Which emails to read</h2>
+    <form class="settings" method="post" action="{{ url_for('email_settings') }}">
+      <label for="sender">From (sender address or name)</label>
+      <input id="sender" name="sender" type="text" value="{{ settings.sender }}" autocomplete="off"
+             aria-describedby="sender-hint">
+      <p class="hint" id="sender-hint">e.g. <code>reports@example.edu</code>. Leave blank to accept any sender.</p>
+
+      <label for="subject">Subject contains</label>
+      <input id="subject" name="subject" type="text" value="{{ settings.subject }}" autocomplete="off"
+             aria-describedby="subject-hint">
+      <p class="hint" id="subject-hint">e.g. <code>Course report</code>. Leave blank to accept any subject.</p>
+
+      <button type="submit">Save</button>
+    </form>
+    <p class="hint">Gmail search used: <code>{{ query }}</code>. Only messages with a <code>.json</code>
+      attachment are read. Changing these settings re-checks all matching mail; reports already stored aren't duplicated.</p>
+  </section>
+{% endblock %}
