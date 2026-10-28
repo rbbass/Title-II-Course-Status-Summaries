@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ c.course }} · Course Accessibility Reports{% endblock %}
+
+{% block content %}
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('index') }}">All courses</a></nav>
+
+  <div class="report-head">
+    <div>
+      <h1>{{ c.course }}</h1>
+      <p class="sub">
+        {% if s.period %}Reporting period {{ s.period }} · {% endif %}Source <code>{{ c.filename }}</code>
+      </p>
+    </div>
+    <div class="actions">
+      <a class="button" href="{{ url_for('course_markdown', filename=c.filename) }}">Download Markdown</a>
+      <button type="button" class="secondary" onclick="window.print()">Print</button>
+    </div>
+  </div>
+
+  <section aria-labelledby="sum-h">
+    <h2 id="sum-h" class="visually-hidden">Summary</h2>
+    <dl class="kpis">
+      <div class="kpi primary">
+        <dt>Overall score</dt>
+        <dd><span class="big">{{ s.overall|score }}</span> <span class="of">/ 100</span></dd>
+        <dd class="kpi-foot">{% include "_delta.html" %}{% if s.delta is not none %} since {{ s.months[0].Date }}{% endif %}</dd>
+      </div>
+      <div class="kpi">
+        <dt>Files processed</dt>
+        <dd><span class="big">{{ s.processed|num }}</span></dd>
+      </div>
+      <div class="kpi">
+        <dt>Remediated</dt>
+        <dd><span class="big">{{ s.remediated|num }}</span></dd>
+        <dd class="kpi-foot">{{ s.remediated_pct }} of files</dd>
+      </div>
+      {% for sev in s.severities %}
+        <div class="kpi">
+          <dt>{{ sev.name }} issues</dt>
+          <dd><span class="big">{{ sev.total|num }}</span></dd>
+          <dd class="kpi-foot">instances</dd>
+        </div>
+      {% endfor %}
+    </dl>
+
+    <ul class="highlights">
+      {% if s.files %}{% set top = s.files[0] %}
+        <li><strong>{{ top.label }} files dominate the course:</strong> {{ top.files }} of {{ s.total_files }}
+          ({{ top.share }}){% if top.score is not none %}, scoring {{ top.score|score }}{% endif %}.</li>
+      {% endif %}
+      {% if s.severities[0].rows %}{% set t = s.severities[0].rows[0] %}
+        <li><strong>Top severe issue:</strong> “{{ t.description }}” in {{ t.label }} files —
+          {{ t.instances|num }} instances ({{ t.share }} of severe issues).</li>
+      {% endif %}
+      {% if s.best %}
+        <li><strong>Highest-scoring format:</strong> {{ s.best[0] }} at {{ s.best[1]|score }}.
+          <strong>Lowest:</strong> {{ s.worst[0] }} at {{ s.worst[1]|score }}.</li>
+      {% endif %}
+      {% if s.alt_downloads %}<li>{{ s.alt_downloads|num }} alternative-format downloads were recorded.</li>{% endif %}
+    </ul>
+  </section>
+
+  {% if s.months %}
+  <section class="card" aria-labelledby="trend-h">
+    <h2 id="trend-h">Score trend</h2>
+    <p class="chart-headline">{{ headline }}</p>
+    {{ chart }}
+    <div class="table-wrap">
+      <table>
+        <caption>Cumulative score by format and month (0–100)</caption>
+        <thead><tr><th scope="col">Format</th>{% for m in s.months %}<th scope="col" class="num">{{ m.Date }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for name, vals in series_rows %}
+            <tr{% if name == "Overall" %} class="emph"{% endif %}><th scope="row">{{ name }}</th>
+              {% for v in vals %}<td class="num">{{ v|score }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if s.empty_months %}<p class="note">No scores recorded for {{ s.empty_months|join(", ") }}.</p>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if s.priorities %}
+  <section class="card" aria-labelledby="start-h">
+    <h2 id="start-h">Where to start</h2>
+    <p>Issues ranked by severity, then by number of instances. Severe issues block screen-reader users and should be fixed first.</p>
+    <ol class="priorities">
+      {% for r in s.priorities %}
+        <li><span class="tag {{ r.severity|lower }}">{{ r.severity }}</span>
+          <span class="fmt">{{ r.label }}</span> {{ r.description }}
+          <span class="count">{{ r.instances|num }}</span></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if s.files %}
+  <section class="card" aria-labelledby="files-h">
+    <h2 id="files-h">Course content by file type</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">File type</th><th scope="col" class="num">Files</th>
+          <th scope="col">Share of files</th><th scope="col" class="num">Score, {{ s.latest_label }}</th></tr></thead>
+        <tbody>
+          {% for r in s.files %}
+            <tr><th scope="row">{{ r.label }}</th><td class="num">{{ r.files|num }}</td>
+              <td><span class="share"><span class="bar" aria-hidden="true"><span style="width: {{ r.share if r.share != '—' else '0%' }}"></span></span>{{ r.share }}</span></td>
+              <td class="num">{{ r.score|score }}</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th scope="row">Total</th><td class="num">{{ s.total_files|num }}</td><td>100%</td>
+          <td class="num">{{ s.overall|score }} overall</td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% for sev in s.severities if sev.rows %}
+  <section class="card" aria-labelledby="sev-{{ loop.index }}">
+    <h2 id="sev-{{ loop.index }}">{{ sev.name }} issues</h2>
+    {% set top = sev.rows[0] %}
+    <p>{{ sev.total|num }} {{ sev.name|lower }} issues were found; the most common is “{{ top.description }}”
+      in {{ top.label }} files ({{ top.instances|num }}, {{ top.share }}).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Format</th><th scope="col">Issue</th>
+          <th scope="col" class="num">Instances</th><th scope="col" class="num">Share</th></tr></thead>
+        <tbody>
+          {% for r in sev.rows %}
+            <tr><td>{{ r.label }}</td><td>{{ r.description }}</td>
+              <td class="num">{{ r.instances|num }}</td><td class="num">{{ r.share }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+
+  <section aria-labelledby="notes-h" class="notes">
+    <h2 id="notes-h">Notes on the data</h2>
+    <ul>
+      <li>Scores are cumulative monthly snapshots on a 0–100 scale.</li>
+      <li>Issue counts are instances, not files: one document can contribute many instances.</li>
+    </ul>
+  </section>
+{% endblock %}

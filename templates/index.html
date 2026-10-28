@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% macro sort_header(key, text, numeric=false) -%}
+  {%- set active = sort == key -%}
+  {%- set next_dir = ("asc" if direction == "desc" else "desc") if active else none -%}
+  <th scope="col"{% if numeric %} class="num"{% endif %}
+      {%- if active %} aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
+    <a href="{{ url_for('index', sort=key, dir=next_dir) }}">{{ text }}
+      {%- if active %} <span aria-hidden="true">{{ "▲" if direction == "asc" else "▼" }}</span>{% endif %}</a>
+  </th>
+{%- endmacro %}
+
+{% block content %}
+  <h1>All courses</h1>
+  <p class="lede">
+    {% if courses %}
+      {{ courses|length }} course report{{ "s" if courses|length != 1 }} from <code>{{ reports_dir.name }}/</code>.
+      Select a course for the full breakdown.
+    {% else %}
+      No reports yet. Upload a course-report JSON export below, or drop one into <code>{{ reports_dir }}</code>.
+    {% endif %}
+  </p>
+
+  {% if courses %}
+  <div class="table-wrap">
+    <table class="courses">
+      <caption class="visually-hidden">Course reports, sortable by column</caption>
+      <thead>
+        <tr>
+          {{ sort_header("course", "Course") }}
+          {{ sort_header("overall", "Overall score", true) }}
+          {{ sort_header("change", "Change", true) }}
+          {{ sort_header("files", "Files", true) }}
+          {{ sort_header("remediated", "Remediated", true) }}
+          {{ sort_header("severe", "Severe issues", true) }}
+          <th scope="col">Top severe issue</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in courses %}
+          {% set s = c.s %}
+          {% set top = s.severities[0].rows[0] if s.severities[0].rows else none %}
+          <tr>
+            <th scope="row"><a href="{{ url_for('course', filename=c.filename) }}">{{ c.course }}</a>
+              {% if s.period %}<span class="sub">{{ s.period }}</span>{% endif %}</th>
+            <td class="num">
+              <span class="score-cell">
+                <span class="bar" aria-hidden="true"><span style="width: {{ s.overall or 0 }}%"></span></span>
+                <strong>{{ s.overall|score }}</strong>
+              </span>
+            </td>
+            <td class="num">{% include "_delta.html" %}</td>
+            <td class="num">{{ s.processed|num }}</td>
+            <td class="num">{{ s.remediated|num }} <span class="sub-inline">({{ s.remediated_pct }})</span></td>
+            <td class="num">{{ s.severities[0].total|num }}</td>
+            <td>{% if top %}{{ top.description }} <span class="sub-inline">· {{ top.label }}, {{ top.instances|num }}</span>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if errors %}
+    <section class="errors" aria-labelledby="err-h">
+      <h2 id="err-h">Files that couldn't be read</h2>
+      <ul>{% for name, msg in errors %}<li><code>{{ name }}</code>: {{ msg }}</li>{% endfor %}</ul>
+    </section>
+  {% endif %}
+
+  <section class="upload" aria-labelledby="up-h">
+    <h2 id="up-h">Add reports</h2>
+    <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+      <label for="reports">Course-report JSON exports</label>
+      <input id="reports" name="reports" type="file" accept=".json,application/json" multiple required>
+      <p class="hint">Files are saved to <code>{{ reports_dir.name }}/</code>. The course name comes from
+        the file name, e.g. <code>course-report (Power Systems I 001 Fall 2026).json</code>. Uploading a
+        file with the same name replaces it.</p>
+      <button type="submit">Upload</button>
+    </form>
+  </section>
+{% endblock %}

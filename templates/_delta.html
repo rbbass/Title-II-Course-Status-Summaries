@@ -1,0 +1,9 @@
+{%- if s.delta is none -%}
+  <span class="delta flat">—</span>
+{%- elif s.delta > 0 -%}
+  <span class="delta up"><span aria-hidden="true">▲</span> {{ "%.1f"|format(s.delta) }}<span class="visually-hidden"> points up since {{ s.months[0].Date }}</span></span>
+{%- elif s.delta < 0 -%}
+  <span class="delta down"><span aria-hidden="true">▼</span> {{ "%.1f"|format(-s.delta) }}<span class="visually-hidden"> points down since {{ s.months[0].Date }}</span></span>
+{%- else -%}
+  <span class="delta flat">0.0<span class="visually-hidden"> change since {{ s.months[0].Date }}</span></span>
+{%- endif -%}
