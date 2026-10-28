@@ -90,7 +90,8 @@
         <caption>Key metrics in each report</caption>
         <thead><tr><th scope="col">Report received</th><th scope="col" class="num">Overall</th>
           <th scope="col" class="num">Files</th><th scope="col" class="num">Remediated</th>
-          <th scope="col" class="num">Severe</th><th scope="col" class="num">Major</th><th scope="col" class="num">Minor</th></tr></thead>
+          <th scope="col" class="num">Severe</th><th scope="col" class="num">Major</th><th scope="col" class="num">Minor</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
         <tbody>
           {% for r in reports|reverse %}
             <tr{% if r.snap.id == snap.id %} class="emph" aria-current="true"{% endif %}>
@@ -99,6 +100,15 @@
               <td class="num">{{ r.s.processed|num }}</td>
               <td class="num">{{ r.s.remediated|num }} ({{ r.s.remediated_pct }})</td>
               {% for sev in r.s.severities %}<td class="num">{{ sev.total|num }}</td>{% endfor %}
+              <td class="row-action">
+                <form method="post" action="{{ url_for('course_delete', course=course) }}"
+                      onsubmit="return confirm('Delete the report received {{ r.snap.taken|when }}? This removes its file and can\'t be undone.')">
+                  <input type="hidden" name="at" value="{{ r.snap.id }}">
+                  <input type="hidden" name="view" value="{{ snap.id }}">
+                  <button type="submit" class="danger small"
+                          aria-label="Delete report received {{ r.snap.taken|when }}">Delete</button>
+                </form>
+              </td>
             </tr>
           {% endfor %}
         </tbody>

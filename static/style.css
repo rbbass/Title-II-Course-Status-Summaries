@@ -123,6 +123,11 @@ button, .button {
   background: var(--accent); color: var(--surface); text-decoration: none;
 }
 button.secondary { background: transparent; color: var(--accent); }
+button.danger { background: transparent; color: var(--down); border-color: var(--down); }
+button.danger:hover { background: var(--down); color: var(--surface); }
+button.small { padding: 3px 10px; font-size: 0.85rem; }
+td.row-action { text-align: right; white-space: nowrap; }
+td.row-action form { margin: 0; }
 
 .actions form { margin: 0; }
 .actions .sub { flex-basis: 100%; text-align: right; margin: 0; }
@@ -188,7 +193,7 @@ svg.trend .end-label.overall { fill: var(--accent); font-weight: 700; }
 .notes h2 { font-size: 1rem; }
 
 @media print {
-  header.site, .crumbs, .actions, .picker, .skip { display: none; }
+  header.site, .crumbs, .actions, .picker, .skip, .row-action { display: none; }
   body { background: #fff; color: #000; }
   .card, .kpi { break-inside: avoid; border-color: #ccc; }
   main { padding: 0; max-width: none; }

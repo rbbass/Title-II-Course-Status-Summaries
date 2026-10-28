@@ -81,6 +81,20 @@ def save(root: Path, course: str, data: dict, taken: datetime) -> tuple[Path, bo
         taken += timedelta(seconds=1)
 
 
+def delete(root: Path, course: str, snapshot_id: str) -> bool:
+    """Remove one snapshot; the course folder goes too once it's empty. Returns False if not found."""
+    folder = course_dir(root, course)
+    if folder is None or not STAMP_RE.match(snapshot_id):
+        return False
+    path = folder / f"{snapshot_id}.json"
+    if not path.is_file():
+        return False
+    path.unlink()
+    if not any(folder.iterdir()):
+        folder.rmdir()
+    return True
+
+
 def file_loose(root: Path) -> list[Path]:
     """Move loose exports in root into their course folders. Returns the new paths."""
     moved = []

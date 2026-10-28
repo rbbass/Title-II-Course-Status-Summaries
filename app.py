@@ -275,6 +275,19 @@ def course(course: str):
         history_rows=sorted(series.items(), key=lambda kv: kv[0] != "Overall") if series else None)
 
 
+@app.post("/course/<course>/delete")
+def course_delete(course: str):
+    at, view = request.form.get("at", ""), request.form.get("view", "")
+    snaps = {s.id: s for s in report_store.snapshots(reports_dir(), course)}
+    if at not in snaps or not report_store.delete(reports_dir(), course, at):
+        abort(404)
+    flash(f"Deleted the report received {app.jinja_env.filters['when'](snaps[at].taken)}.", "ok")
+    if len(snaps) == 1:
+        return redirect(url_for("index"))
+    # Stay on the report being viewed, unless that's the one just deleted.
+    return redirect(url_for("course", course=course, at=view if view in snaps and view != at else None))
+
+
 @app.get("/course/<course>/markdown")
 def course_markdown(course: str):
     reports = load_course(course)
