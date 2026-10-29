@@ -15,6 +15,7 @@ CourseReports/, where it is filed automatically.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import socket
@@ -30,6 +31,7 @@ import report_store
 
 app = Flask(__name__)
 app.config["REPORTS_DIR"] = Path(__file__).parent / "CourseReports"
+app.config["DEPARTMENTS_FILE"] = Path(__file__).parent / "course_departments.json"
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 app.secret_key = os.urandom(16)
 
@@ -46,13 +48,29 @@ SORTS = {
     "remediated": (lambda c: c["s"]["remediated"] / c["s"]["processed"] if c["s"]["processed"] else 0, False),
     "severe": (lambda c: c["s"]["severities"][0]["total"], True),
     "updated": (lambda c: c["snap"].taken, True),
+    "dept": (lambda c: (c["dept"] or "~", c["course"].lower()), False),  # unassigned last
 }
+
+DEPARTMENTS = ["CEE", "CS", "ECE", "ETM", "MME"]
 
 
 # --------------------------------------------------------------------------- data
 
 def reports_dir() -> Path:
     return Path(app.config["REPORTS_DIR"])
+
+
+def load_departments() -> dict[str, str]:
+    """{course name: department code}."""
+    try:
+        return json.loads(Path(app.config["DEPARTMENTS_FILE"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_departments(mapping: dict[str, str]) -> None:
+    Path(app.config["DEPARTMENTS_FILE"]).write_text(json.dumps(dict(sorted(mapping.items())), indent=2) + "\n",
+                                                    encoding="utf-8")
 
 
 def load_snapshot(snap: report_store.Snapshot) -> dict:
@@ -88,6 +106,7 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
     root = reports_dir()
     report_store.file_loose(root)
     rows, errors = [], [(p.name, "couldn't be read as a course-report export") for p in root.glob("*.json")]
+    departments = load_departments()
     for course, snaps in report_store.courses(root).items():
         try:
             latest = load_snapshot(snaps[-1])
@@ -96,6 +115,7 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
             errors.append((course, str(e)))
             continue
         rows.append({"course": course, "snap": latest["snap"], "s": latest["s"], "count": len(snaps),
+                     "dept": departments.get(course, ""),
                      "prev_snap": prev["snap"] if prev else None,
                      "changes": changes(latest["s"], prev["s"] if prev else None)})
     return rows, errors
@@ -183,9 +203,9 @@ def line_chart_svg(uid: str, axis_labels: list[str], point_labels: list[str], se
     return Markup("".join(out))
 
 
-def trend_svg(s: dict) -> Markup:
+def trend_svg(s: dict, uid: str = "") -> Markup:
     labels = [m["Date"] for m in s["months"]]
-    return line_chart_svg("trend", [short_month(m) for m in labels], labels, s["series"], trend_headline(s),
+    return line_chart_svg(f"{uid}trend", [short_month(m) for m in labels], labels, s["series"], trend_headline(s),
                           "Cumulative accessibility score by format, 0 to 100, from this report. "
                           "The same data is in the table that follows the chart.")
 
@@ -202,12 +222,12 @@ def history_series(reports: list[dict]) -> dict[str, list]:
     return series
 
 
-def history_svg(reports: list[dict], series: dict[str, list]) -> Markup:
+def history_svg(reports: list[dict], series: dict[str, list], uid: str = "") -> Markup:
     first, last = series["Overall"][0], series["Overall"][-1]
     title = (f"Overall score went from {ar.fmt_score(first)} to {ar.fmt_score(last)} across "
              f"{len(reports)} reports")
     taken = [r["snap"].taken for r in reports]
-    return line_chart_svg("history", [f"{t:%b} {t.day}" for t in taken], [f"{t:%b} {t.day}, {t.year}" for t in taken],
+    return line_chart_svg(f"{uid}history", [f"{t:%b} {t.day}" for t in taken], [f"{t:%b} {t.day}, {t.year}" for t in taken],
                           series, title, "Overall and per-format score, 0 to 100, in each report received. "
                           "The same data is in the table that follows the chart.")
 
@@ -225,8 +245,30 @@ def index():
         reverse = False
     courses.sort(key=key, reverse=reverse)
     return render_template("index.html", courses=courses, errors=errors, sort=sort,
-                           direction="desc" if reverse else "asc", reports_dir=reports_dir(),
+                           direction="desc" if reverse else "asc", reports_dir=reports_dir(), departments=DEPARTMENTS,
                            mail=gmail_source.status(), settings=gmail_source.load_settings())
+
+
+@app.post("/departments")
+def departments():
+    """Save course → department choices. Fields are named "dept::<course>"; an empty value clears it."""
+    known = set(report_store.courses(reports_dir()))
+    mapping = load_departments()
+    for key, value in request.form.items():
+        if not key.startswith("dept::"):
+            continue
+        course = key.removeprefix("dept::")
+        if course not in known or (value and value not in DEPARTMENTS):
+            abort(400)
+        if value:
+            mapping[course] = value
+        else:
+            mapping.pop(course, None)
+    save_departments(mapping)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return "", 204
+    flash("Departments saved.", "ok")
+    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
 
 
 @app.post("/upload")
@@ -254,25 +296,80 @@ def upload():
     return redirect(url_for("index"))
 
 
-@app.get("/course/<course>")
-def course(course: str):
+def report_context(course: str, at: str | None, history_through_selected: bool = False, uid: str = "") -> dict:
+    """Template variables for one report of a course (the latest when `at` is None).
+
+    With history_through_selected, history stops at the chosen report, as a downloaded
+    copy of an older report shouldn't show what came after it.
+    """
     reports = load_course(course)
     ids = [r["snap"].id for r in reports]
-    at = request.args.get("at", ids[-1])
+    at = at or ids[-1]
     if at not in ids:
         abort(404)
     i = ids.index(at)
     current, prev = reports[i], reports[i - 1] if i else None
+    history = reports[:i + 1] if history_through_selected else reports
     s = current["s"]
 
-    series = history_series(reports) if len(reports) > 1 else None
-    return render_template(
-        "report.html", course=reports[0]["snap"].course, current=current, prev=prev, s=s,
-        changes=changes(s, prev["s"] if prev else None), reports=reports, is_latest=i == len(reports) - 1,
-        chart=trend_svg(s), headline=trend_headline(s),
+    series = history_series(history) if len(history) > 1 else None
+    return dict(
+        course=reports[0]["snap"].course, current=current, prev=prev, s=s, snap=current["snap"],
+        since=f"{app.jinja_env.filters['day'](prev['snap'].taken)} report" if prev else "",
+        changes=changes(s, prev["s"] if prev else None), reports=history, all_reports=reports,
+        is_latest=i == len(reports) - 1, chart=trend_svg(s, uid), headline=trend_headline(s), uid=uid,
         series_rows=sorted(s["series"].items(), key=lambda kv: kv[0] != "Overall"),
-        history_chart=history_svg(reports, series) if series else None,
+        history_chart=history_svg(history, series, uid) if series else None,
         history_rows=sorted(series.items(), key=lambda kv: kv[0] != "Overall") if series else None)
+
+
+@app.get("/course/<course>")
+def course(course: str):
+    return render_template("report.html", standalone=False, **report_context(course, request.args.get("at")))
+
+
+def html_download(html: str, filename: str) -> Response:
+    return Response(html, mimetype="text/html", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def inline_css() -> str:
+    return (Path(app.static_folder) / "style.css").read_text(encoding="utf-8")
+
+
+@app.get("/course/<course>/download")
+def course_download(course: str):
+    ctx = report_context(course, request.args.get("at"), history_through_selected=True)
+    html = render_template("report_file.html", standalone=True, css=inline_css(), generated=datetime.now(), **ctx)
+    return html_download(html, f"{ar.slugify(ctx['course'])}-{ctx['snap'].taken:%Y-%m-%d}.html")
+
+
+@app.get("/compilation")
+def compilation():
+    """One self-contained HTML file with the latest report of each selected course."""
+    selected = request.args.getlist("course")
+    rows, _ = load_all()
+    by_name = {r["course"]: r for r in rows}
+    chosen = [by_name[name] for name in dict.fromkeys(selected) if name in by_name]  # keep table order
+    if not chosen:
+        flash("Select at least one course for the compilation report.", "error")
+        return redirect(url_for("index"))
+
+    sections = []
+    for n, row in enumerate(chosen, 1):
+        ctx = report_context(row["course"], None, uid=f"c{n}-")
+        body = render_template("_report_body.html", standalone=True, h=3, show_notes=False, **ctx)
+        sections.append({"anchor": f"c{n}", "ctx": ctx, "body": Markup(body)})
+
+    totals = {
+        "processed": sum(r["s"]["processed"] for r in chosen),
+        "remediated": sum(r["s"]["remediated"] for r in chosen),
+        "issues": [sum(r["s"]["severities"][k]["total"] for r in chosen) for k in range(3)],
+    }
+    totals["remediated_pct"] = ar.pct(totals["remediated"], totals["processed"])
+    now = datetime.now()
+    html = render_template("compilation.html", rows=chosen, sections=sections, totals=totals,
+                           css=inline_css(), generated=now)
+    return html_download(html, f"course-accessibility-compilation-{now:%Y-%m-%d}.html")
 
 
 @app.post("/course/<course>/delete")
@@ -286,17 +383,6 @@ def course_delete(course: str):
         return redirect(url_for("index"))
     # Stay on the report being viewed, unless that's the one just deleted.
     return redirect(url_for("course", course=course, at=view if view in snaps and view != at else None))
-
-
-@app.get("/course/<course>/markdown")
-def course_markdown(course: str):
-    reports = load_course(course)
-    at = request.args.get("at")
-    r = next((r for r in reports if r["snap"].id == at), reports[-1]) if at else reports[-1]
-    snap = r["snap"]
-    md = ar.build_report(r["data"], snap.course, f"{snap.course}/{snap.path.name}", None)
-    filename = f"{ar.slugify(snap.course)}-{snap.taken:%Y-%m-%d}.md"
-    return Response(md, mimetype="text/markdown", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # --------------------------------------------------------------------------- routes: email

@@ -18,9 +18,16 @@ python -m venv .venv
 ```
 
 - **All courses** — each course's latest report, with the change since its previous report. Sortable.
+  Assign each course a department (CEE, CS, ECE, ETM, MME) in the **Dept.** column; choices save
+  immediately to `course_departments.json`.
+  Check courses (or the header checkbox for all) and click **Generate Compilation Report** to download
+  one self-contained HTML file: an overview table with totals, then each selected course's latest report.
 - **Course page** — pick any report received for the course. Shows changes since the previous report, a
   history chart and table across all reports, the monthly score trend, where-to-start priorities, file
-  types, and severe/major/minor issue tables. Download any report as Markdown, or print it.
+  types, and severe/major/minor issue tables.
+- **Download report (HTML)** — a single self-contained `.html` file of the report you're viewing (styles and
+  charts inline, no scripts or external links) to email or share. Its history stops at that report.
+  Recipients can open it in any browser, or print it to PDF.
 - **Email** — pull reports from a Gmail inbox (below).
 - **Add reports by hand** — upload exports on the home page, or drop them into `CourseReports/`; they're
   filed into their course's history automatically.

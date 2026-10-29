@@ -38,11 +38,30 @@
   </div>
 
   {% if courses %}
+  <form id="compile" method="get" action="{{ url_for('compilation') }}">
+  <div class="table-toolbar">
+    <button type="submit">Generate Compilation Report</button>
+    <span id="selected-count" class="sub-inline" role="status" aria-live="polite"></span>
+    <noscript><button type="submit" form="dept-form" class="secondary">Save departments</button></noscript>
+    <span id="dept-status" class="sub-inline" role="status" aria-live="polite"></span>
+  </div>
+  <div class="table-toolbar">
+    <label for="select-dept">Select by Department</label>
+    <select id="select-dept" aria-describedby="select-dept-hint">
+      <option value="">—</option>
+      {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+      <option value="none">No department</option>
+    </select>
+    <span id="select-dept-hint" class="visually-hidden">Checks every course in the chosen department and clears the rest.</span>
+  </div>
   <div class="table-wrap">
     <table class="courses">
-      <caption class="visually-hidden">Course reports, sortable by column</caption>
+      <caption class="visually-hidden">Course reports, sortable by column. Check courses to include them in a compilation report.</caption>
       <thead>
         <tr>
+          <th scope="col" class="select">
+            <input type="checkbox" id="select-all" aria-label="Select all courses">
+          </th>
           {{ sort_header("course", "Course") }}
           {{ sort_header("overall", "Overall score", true) }}
           {{ sort_header("change", "Since last report", true) }}
@@ -50,12 +69,17 @@
           {{ sort_header("remediated", "Remediated", true) }}
           {{ sort_header("severe", "Severe issues", true) }}
           {{ sort_header("updated", "Latest report", true) }}
+          {{ sort_header("dept", "Dept.") }}
         </tr>
       </thead>
       <tbody>
         {% for c in courses %}
           {% set s = c.s %}
           <tr>
+            <td class="select">
+              <input type="checkbox" name="course" value="{{ c.course }}" id="pick-{{ loop.index }}"
+                     aria-label="Include {{ c.course }}">
+            </td>
             <th scope="row"><a href="{{ url_for('course', course=c.course) }}">{{ c.course }}</a>
               {% if s.period %}<span class="sub">{{ s.period }}</span>{% endif %}</th>
             <td class="num">
@@ -72,11 +96,81 @@
             <td class="num">{{ s.severities[0].total|num }}
               {% if c.changes %}<span class="sub-inline">{{ delta(c.changes.severe, c.prev_snap.taken|day, false, 0) }}</span>{% endif %}</td>
             <td>{{ c.snap.taken|day }} <span class="sub">{{ c.count }} report{{ "s" if c.count != 1 }}</span></td>
+            <td class="dept">
+              <select name="dept::{{ c.course }}" form="dept-form" aria-label="Department for {{ c.course }}">
+                <option value=""{% if not c.dept %} selected{% endif %}>—</option>
+                {% for d in departments %}<option value="{{ d }}"{% if c.dept == d %} selected{% endif %}>{{ d }}</option>{% endfor %}
+              </select>
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  </form>
+  {# The Dept. dropdowns belong to this form (via form="dept-form"), so they don't ride along with the compilation. #}
+  <form id="dept-form" method="post" action="{{ url_for('departments', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>
+  <script>
+    // Save a department as soon as it's chosen.
+    (() => {
+      const status = document.getElementById("dept-status");
+      document.querySelectorAll('select[form="dept-form"]').forEach(select => {
+        let saved = select.value;
+        select.addEventListener("change", async () => {
+          const course = select.name.slice("dept::".length);
+          try {
+            const res = await fetch("{{ url_for('departments') }}", {
+              method: "POST",
+              headers: {"X-Requested-With": "fetch"},
+              body: new URLSearchParams({[select.name]: select.value}),
+            });
+            if (!res.ok) throw new Error(res.status);
+            saved = select.value;
+            status.textContent = `Saved: ${course} → ${select.value || "no department"}`;
+          } catch (err) {
+            select.value = saved;
+            status.textContent = `Couldn't save the department for ${course}. Try again.`;
+          }
+        });
+      });
+    })();
+  </script>
+  <script>
+    // "Select all" checkbox, selection count, and a nudge when nothing is checked.
+    (() => {
+      const form = document.getElementById("compile");
+      const all = document.getElementById("select-all");
+      const boxes = [...form.querySelectorAll('input[name="course"]')];
+      const count = document.getElementById("selected-count");
+      const sync = () => {
+        const n = boxes.filter(b => b.checked).length;
+        all.checked = n === boxes.length;
+        all.indeterminate = n > 0 && n < boxes.length;
+        count.textContent = n ? `${n} of ${boxes.length} selected` : "";
+      };
+      const byDept = document.getElementById("select-dept");
+      // A row's department is whatever its Dept. dropdown shows now.
+      const deptOf = b => b.closest("tr").querySelector('select[form="dept-form"]').value;
+      all.addEventListener("change", () => { boxes.forEach(b => { b.checked = all.checked; }); byDept.value = ""; sync(); });
+      boxes.forEach(b => b.addEventListener("change", () => { byDept.value = ""; sync(); }));
+      byDept.addEventListener("change", () => {
+        if (!byDept.value) return;
+        const want = byDept.value === "none" ? "" : byDept.value;
+        boxes.forEach(b => { b.checked = deptOf(b) === want; });
+        sync();
+        if (!boxes.some(b => b.checked)) {
+          count.textContent = `No courses ${want ? "in " + want : "without a department"}.`;
+        }
+      });
+      form.addEventListener("submit", e => {
+        if (!boxes.some(b => b.checked)) {
+          e.preventDefault();
+          count.textContent = "Select at least one course first.";
+        }
+      });
+      sync();
+    })();
+  </script>
   {% endif %}
 
   {% if errors %}

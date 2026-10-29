@@ -1,0 +1,27 @@
+<!doctype html>
+{# A downloadable, self-contained copy of one report: styles and charts inline, no scripts or links back to the app. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="generator" content="Course Accessibility Reports">
+  <title>{{ course }} — Accessibility Report, {{ snap.taken|day }}</title>
+  <style>
+{{ css }}
+  </style>
+</head>
+<body>
+  <main id="main">
+    <div class="report-head">
+      <div>
+        <h1>{{ course }} <span class="sub">Accessibility report</span></h1>
+        <p class="sub">
+          Report received {{ snap.taken|when }}{% if s.period %} · reporting period {{ s.period }}{% endif %}
+          · generated {{ generated|when }}
+        </p>
+      </div>
+    </div>
+    {% include "_report_body.html" %}
+  </main>
+</body>
+</html>

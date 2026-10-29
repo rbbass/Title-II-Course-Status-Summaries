@@ -1,0 +1,90 @@
+<!doctype html>
+{# Self-contained compilation of several courses' latest reports: styles and charts inline, no scripts. #}
+{% from "_macros.html" import delta %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="generator" content="Course Accessibility Reports">
+  <title>Course Accessibility Compilation, {{ generated|day }}</title>
+  <style>
+{{ css }}
+  </style>
+</head>
+<body>
+  <main id="main">
+    <h1>Course Accessibility Compilation</h1>
+    <p class="sub">{{ rows|length }} course{{ "s" if rows|length != 1 }}, each from its latest report · generated {{ generated|when }}</p>
+
+    <section class="card" aria-labelledby="overview-h">
+      <h2 id="overview-h">Overview</h2>
+      <div class="table-wrap">
+        <table>
+          <caption>Latest report for each course. Select a course name to jump to its full report.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Course</th>
+              <th scope="col" class="num">Overall score</th>
+              <th scope="col" class="num">Since last report</th>
+              <th scope="col" class="num">Files</th>
+              <th scope="col" class="num">Remediated</th>
+              <th scope="col" class="num">Severe</th>
+              <th scope="col" class="num">Major</th>
+              <th scope="col" class="num">Minor</th>
+              <th scope="col">Latest report</th>
+              <th scope="col">Dept.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in rows %}{% set s = c.s %}
+              <tr>
+                <th scope="row"><a href="#{{ sections[loop.index0].anchor }}">{{ c.course }}</a>
+                  {% if s.period %}<span class="sub">{{ s.period }}</span>{% endif %}</th>
+                <td class="num"><strong>{{ s.overall|score }}</strong></td>
+                <td class="num">{% if c.changes %}{{ delta(c.changes.overall, c.prev_snap.taken|day) }}{% else %}<span class="delta flat">—</span>{% endif %}</td>
+                <td class="num">{{ s.processed|num }}</td>
+                <td class="num">{{ s.remediated|num }} <span class="sub-inline">({{ s.remediated_pct }})</span></td>
+                {% for sev in s.severities %}<td class="num">{{ sev.total|num }}</td>{% endfor %}
+                <td>{{ c.snap.taken|day }}</td>
+                <td>{{ c.dept or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          {% if rows|length > 1 %}
+          <tfoot>
+            <tr>
+              <th scope="row">All selected courses</th>
+              <td class="num">—</td>
+              <td class="num"></td>
+              <td class="num">{{ totals.processed|num }}</td>
+              <td class="num">{{ totals.remediated|num }} <span class="sub-inline">({{ totals.remediated_pct }})</span></td>
+              {% for n in totals.issues %}<td class="num">{{ n|num }}</td>{% endfor %}
+              <td></td>
+              <td></td>
+            </tr>
+          </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </section>
+
+    {% for sec in sections %}{% set ctx = sec.ctx %}
+      <article class="course-section" id="{{ sec.anchor }}" aria-labelledby="{{ sec.anchor }}-h">
+        <h2 id="{{ sec.anchor }}-h">{{ ctx.course }}</h2>
+        <p class="sub">Report received {{ ctx.snap.taken|when }}{% if ctx.s.period %} · reporting period {{ ctx.s.period }}{% endif %}
+          · <a href="#overview-h">Back to overview</a></p>
+        {{ sec.body }}
+      </article>
+    {% endfor %}
+
+    <section aria-labelledby="notes-h" class="notes">
+      <h2 id="notes-h">Notes on the data</h2>
+      <ul>
+        <li>Each course is shown from its most recent report. Each report is a snapshot, stamped with when it was received; scores within a report are cumulative monthly values on a 0–100 scale.</li>
+        <li>Issue counts are instances, not files: one document can contribute many instances.</li>
+        <li>Overall scores aren't totalled across courses, because each is an average over that course's own files.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

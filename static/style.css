@@ -127,6 +127,22 @@ button.danger { background: transparent; color: var(--down); border-color: var(-
 button.danger:hover { background: var(--down); color: var(--surface); }
 button.small { padding: 3px 10px; font-size: 0.85rem; }
 td.row-action { text-align: right; white-space: nowrap; }
+
+.table-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
+.table-toolbar label { font-weight: 600; }
+#select-dept, td.dept select {
+  font: inherit; font-size: 0.9rem; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); cursor: pointer;
+}
+th.select, td.select { width: 1%; padding-right: 0; vertical-align: middle; }
+th.select input, td.select input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+td.dept { vertical-align: middle; }
+
+.course-section { margin-top: 40px; padding-top: 24px; border-top: 3px solid var(--border); }
+.course-section > h2 { font-size: 1.5rem; margin-bottom: 4px; }
+.course-section > .sub { margin-bottom: 16px; }
+.course-section h3 { font-size: 1.15rem; margin: 0 0 12px; }
 td.row-action form { margin: 0; }
 
 .actions form { margin: 0; }
@@ -196,5 +212,6 @@ svg.trend .end-label.overall { fill: var(--accent); font-weight: 700; }
   header.site, .crumbs, .actions, .picker, .skip, .row-action { display: none; }
   body { background: #fff; color: #000; }
   .card, .kpi { break-inside: avoid; border-color: #ccc; }
+  .course-section { break-before: page; border-top: none; margin-top: 0; }
   main { padding: 0; max-width: none; }
 }
