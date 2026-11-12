@@ -13,6 +13,7 @@
     <nav aria-label="Main">
       <a href="{{ url_for('index') }}"{% if request.endpoint == 'index' %} aria-current="page"{% endif %}>All courses</a>
       <a href="{{ url_for('email') }}"{% if request.endpoint == 'email' %} aria-current="page"{% endif %}>Email</a>
+      <a href="{{ url_for('settings') }}"{% if request.endpoint == 'settings' %} aria-current="page"{% endif %}>Settings</a>
     </nav>
   </header>
   <main id="main">

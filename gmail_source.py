@@ -22,12 +22,12 @@ from pathlib import Path
 
 import accessibility_report as ar
 import report_store
+from app_settings import APP_DIR
 
-BASE = Path(__file__).parent
-SECRETS = BASE / "secrets"
+SECRETS = APP_DIR / "secrets"
 CLIENT_FILE = SECRETS / "credentials.json"
 TOKEN_FILE = SECRETS / "token.json"
-SETTINGS_FILE = BASE / "mail_settings.json"
+SETTINGS_FILE = APP_DIR / "mail_settings.json"
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 

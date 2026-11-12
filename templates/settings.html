@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Settings · Course Accessibility Reports{% endblock %}
+
+{% block content %}
+  <h1>Settings</h1>
+  <p class="lede">Choose the data folder: the one that holds the <code>{{ reports_name }}</code> folder and
+    <code>{{ departments_name }}</code>. Point everyone's copy of the app at the same shared folder
+    to see the same reports and departments.</p>
+
+  <section class="card settings" aria-labelledby="data-h">
+    <h2 id="data-h">Data folder</h2>
+    {% if data_dir %}<p>Currently using <code>{{ data_dir }}</code>.</p>{% endif %}
+    <form method="post" action="{{ url_for('settings_save') }}">
+      <label for="data_dir">Folder</label>
+      <input type="text" id="data_dir" name="data_dir" required spellcheck="false" autocomplete="off"
+             value="{{ data_dir or '' }}" placeholder="G:\Shared drives\MCECS ADA Course Reports"
+             aria-describedby="data-hint">
+      <p class="hint" id="data-hint">Paste the folder's path, e.g. from File Explorer's address bar. Pasting the
+        <code>{{ reports_name }}</code> folder itself works too. For a Google shared drive, Google Drive for desktop
+        must be installed and signed in; mark the folder <em>Available offline</em> so pages load quickly.</p>
+      <button type="submit">Save</button>
+    </form>
+    <p class="sub">This choice is saved on this computer only, in <code>{{ settings_file }}</code>.</p>
+  </section>
+{% endblock %}

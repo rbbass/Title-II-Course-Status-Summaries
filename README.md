@@ -29,10 +29,35 @@ python -m venv .venv
   charts inline, no scripts or external links) to email or share. Its history stops at that report.
   Recipients can open it in any browser, or print it to PDF.
 - **Email** — pull reports from a Gmail inbox (below).
+- **Settings** — choose the data folder (below).
 - **Add reports by hand** — upload exports on the home page, or drop them into `CourseReports/`; they're
   filed into their course's history automatically.
 
 The server listens on `127.0.0.1` only.
+
+## Shared data folder
+
+The **data folder** holds `CourseReports/` and `course_departments.json`. Choose it on the **Settings**
+page; the choice is saved on that computer in `app_settings.json` (git-ignored). Running from source with
+no choice saved, the project folder is used. `--data-dir <folder>` overrides it for one run.
+
+To share reports with colleagues, use a synced folder such as a Google shared drive
+(`G:\Shared drives\MCECS ADA Course Reports`) via Google Drive for desktop, and point everyone's copy of
+the app at it. Mark the folder **Available offline** so pages load quickly. One person checks email;
+everyone sees the new reports once Drive syncs.
+
+## Packaged app for people without Python
+
+```powershell
+.\build.ps1
+```
+
+Builds `dist\Course Accessibility Reports\` and a `.zip` of it. Recipients unzip it anywhere local (not
+inside Google Drive), double-click `Course Accessibility Reports.exe`, and pick the data folder on first
+run. A console window shows the app is running; closing it stops the app. Windows may warn about an
+unsigned app the first time (**More info → Run anyway**). Rebuild and resend after changing the app.
+
+The packaged app keeps its `app_settings.json`, and any Gmail sign-in, next to the `.exe`.
 
 ## Importing reports from Gmail
 
@@ -77,5 +102,7 @@ Writes `<course>.md` plus a `<course>-trend.png` chart (needs matplotlib) per ex
 | `report_store.py` | Timestamped snapshots per course |
 | `gmail_source.py` | Gmail sign-in and attachment import |
 | `app.py` | Flask app, SVG charts |
+| `app_settings.py` | App and data folder locations |
+| `build.ps1` | Packages the app as a Windows program |
 | `templates/`, `static/` | Pages and styles |
 | `CourseReports/` | Stored reports |

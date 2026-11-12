@@ -153,6 +153,8 @@ td.row-action form { margin: 0; }
   font: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text); width: 100%; max-width: 420px;
 }
+.settings #data_dir { max-width: 640px; }
+.settings form + .sub { margin-top: 16px; }
 .settings .hint { margin-top: 4px; }
 .steps li { margin-bottom: 6px; }
 

@@ -4,3 +4,8 @@ reports/
 # Gmail sign-in and local mail settings — never commit
 secrets/
 mail_settings.json
+# This computer's data-folder choice
+app_settings.json
+# Packaged app (build.ps1)
+build/
+dist/

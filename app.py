@@ -5,11 +5,12 @@ Local web app for browsing course-report JSON exports over time.
 Usage:
     python app.py                         # serves http://127.0.0.1:5077 (or the next free port)
     python app.py --port 8080 --debug
-    python app.py --reports-dir path/to/exports
+    python app.py --data-dir "G:/Shared drives/Team/Reports"   # this run only
 
-Reports live in CourseReports/<course>/<timestamp>.json (see report_store.py). They arrive
-from Gmail (see gmail_source.py), from the upload form, or by dropping an export into
-CourseReports/, where it is filed automatically.
+Reports live in <data folder>/CourseReports/<course>/<timestamp>.json (see report_store.py),
+next to course_departments.json. The data folder is chosen on the Settings page (see
+app_settings.py). Reports arrive from Gmail (see gmail_source.py), from the upload form, or by
+dropping an export into CourseReports/, where it is filed automatically.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import json
 import math
 import os
 import socket
+import threading
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -26,12 +29,13 @@ from flask import Flask, Response, abort, flash, redirect, render_template, requ
 from markupsafe import Markup, escape
 
 import accessibility_report as ar
+import app_settings
 import gmail_source
 import report_store
 
-app = Flask(__name__)
-app.config["REPORTS_DIR"] = Path(__file__).parent / "CourseReports"
-app.config["DEPARTMENTS_FILE"] = Path(__file__).parent / "course_departments.json"
+app = Flask(__name__, template_folder=app_settings.BUNDLE_DIR / "templates",
+            static_folder=app_settings.BUNDLE_DIR / "static")
+app.config["DATA_DIR"] = app_settings.saved_data_dir()  # None until chosen on the Settings page
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 app.secret_key = os.urandom(16)
 
@@ -56,21 +60,29 @@ DEPARTMENTS = ["CEE", "CS", "ECE", "ETM", "MME"]
 
 # --------------------------------------------------------------------------- data
 
+def data_dir() -> Path | None:
+    d = app.config["DATA_DIR"]
+    return Path(d) if d else None
+
+
 def reports_dir() -> Path:
-    return Path(app.config["REPORTS_DIR"])
+    return data_dir() / app_settings.REPORTS_NAME
+
+
+def departments_file() -> Path:
+    return data_dir() / app_settings.DEPARTMENTS_NAME
 
 
 def load_departments() -> dict[str, str]:
     """{course name: department code}."""
     try:
-        return json.loads(Path(app.config["DEPARTMENTS_FILE"]).read_text(encoding="utf-8"))
+        return json.loads(departments_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
 def save_departments(mapping: dict[str, str]) -> None:
-    Path(app.config["DEPARTMENTS_FILE"]).write_text(json.dumps(dict(sorted(mapping.items())), indent=2) + "\n",
-                                                    encoding="utf-8")
+    departments_file().write_text(json.dumps(dict(sorted(mapping.items())), indent=2) + "\n", encoding="utf-8")
 
 
 def load_snapshot(snap: report_store.Snapshot) -> dict:
@@ -385,6 +397,48 @@ def course_delete(course: str):
     return redirect(url_for("course", course=course, at=view if view in snaps and view != at else None))
 
 
+# --------------------------------------------------------------------------- routes: settings
+
+@app.before_request
+def require_data_dir():
+    """Send every page to Settings until the data folder is chosen and reachable."""
+    if request.endpoint in ("settings", "settings_save", "static"):
+        return None
+    d = data_dir()
+    if d is None:
+        flash("Choose the folder that holds the course reports to get started.", "notice")
+        return redirect(url_for("settings"))
+    if not d.is_dir():
+        flash(f"Can't reach the data folder {d}. If it's on Google Drive, check that Google Drive for "
+              "desktop is running and signed in, or choose another folder.", "error")
+        return redirect(url_for("settings"))
+    reports_dir().mkdir(exist_ok=True)
+    return None
+
+
+@app.get("/settings")
+def settings():
+    return render_template("settings.html", data_dir=data_dir(), reports_name=app_settings.REPORTS_NAME,
+                           departments_name=app_settings.DEPARTMENTS_NAME, settings_file=app_settings.SETTINGS_FILE)
+
+
+@app.post("/settings")
+def settings_save():
+    text = request.form.get("data_dir", "")
+    if not text.strip():
+        flash("Enter a folder.", "error")
+        return redirect(url_for("settings"))
+    path = app_settings.normalize_data_dir(text)
+    if not path.is_dir():
+        flash(f"Folder not found: {path}", "error")
+        return redirect(url_for("settings"))
+    (path / app_settings.REPORTS_NAME).mkdir(exist_ok=True)
+    app_settings.save(app_settings.load() | {"data_dir": str(path)})
+    app.config["DATA_DIR"] = path
+    flash(f"Using reports in {path / app_settings.REPORTS_NAME}.", "ok")
+    return redirect(url_for("index"))
+
+
 # --------------------------------------------------------------------------- routes: email
 
 @app.get("/email")
@@ -471,14 +525,16 @@ def port_free(port: int) -> bool:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Serve course accessibility reports locally.")
-    p.add_argument("--reports-dir", type=Path, default=app.config["REPORTS_DIR"],
-                   help="folder of course-report snapshots (default: CourseReports/)")
+    p.add_argument("--data-dir", type=Path,
+                   help="folder holding CourseReports/ and course_departments.json, for this run only "
+                        "(default: the one chosen on the Settings page)")
     p.add_argument("--port", type=int, help=f"port to serve on (default: first free from {DEFAULT_PORT})")
     p.add_argument("--debug", action="store_true", help="auto-reload on code changes")
+    p.add_argument("--no-browser", action="store_true", help="don't open the browser (packaged app only)")
     args = p.parse_args()
 
-    args.reports_dir.mkdir(parents=True, exist_ok=True)
-    app.config["REPORTS_DIR"] = args.reports_dir
+    if args.data_dir:
+        app.config["DATA_DIR"] = args.data_dir
 
     # The debug reloader re-runs this in a child process; reuse the port the parent chose.
     port = int(os.environ.get("REPORTS_APP_PORT", 0)) or args.port
@@ -489,6 +545,13 @@ def main() -> None:
     elif "REPORTS_APP_PORT" not in os.environ and not port_free(port):
         raise SystemExit(f"Port {port} is already in use; pick another with --port.")
     os.environ["REPORTS_APP_PORT"] = str(port)
+
+    url = f"http://127.0.0.1:{port}/"
+    if app_settings.FROZEN:
+        # Double-clicked .exe: say what this window is and open the app in the browser.
+        print(f"Course Accessibility Reports is running at {url}\nClose this window to stop it.\n")
+        if not args.no_browser:
+            threading.Timer(1.0, webbrowser.open, [url]).start()
 
     # Bound to localhost only: this is a single-user tool, not a server.
     app.run(host="127.0.0.1", port=port, debug=args.debug)
