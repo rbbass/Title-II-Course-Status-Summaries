@@ -9,3 +9,5 @@ app_settings.json
 # Packaged app (build.ps1)
 build/
 dist/
+# Office temporary files (Word/Excel/PowerPoint while a document is open)
+~$*
