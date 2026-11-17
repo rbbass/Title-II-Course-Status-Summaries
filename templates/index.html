@@ -45,6 +45,11 @@
     <noscript><button type="submit" form="dept-form" class="secondary">Save departments</button></noscript>
     <span id="dept-status" class="sub-inline" role="status" aria-live="polite"></span>
   </div>
+  <div class="table-toolbar">
+    <button type="submit" formaction="{{ url_for('inventory') }}" aria-describedby="inventory-hint">Generate Department
+      Resource Inventory</button>
+    <span id="inventory-hint" class="sub-inline">A spreadsheet (.csv) of the checked courses.</span>
+  </div>
   {# These controls belong to history-form (below), since forms can't nest. #}
   <div class="table-toolbar">
     <label for="history-file">Upload latest Course History - S0041.xlsx report</label>

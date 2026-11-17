@@ -15,3 +15,4 @@ dist/
 *.xlsx
 # Reports live in the shared data folder (see Settings)
 CourseReports/
+course_departments.json

@@ -16,6 +16,8 @@ dropping an export into CourseReports/, where it is filed automatically.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import math
 import os
@@ -299,8 +301,8 @@ def history_svg(reports: list[dict], series: dict[str, list], uid: str = "") -> 
 
 # --------------------------------------------------------------------------- routes: reports
 
-@app.get("/")
-def index():
+def sorted_courses() -> tuple[list[dict], list[tuple[str, str]], str, bool]:
+    """All courses in the order the request's sort/dir ask for, as on the All courses page."""
     courses, errors = load_all()
     sort = request.args.get("sort", "overall")
     key, reverse = SORTS.get(sort, SORTS["overall"])
@@ -309,6 +311,12 @@ def index():
     elif request.args.get("dir") == "asc":
         reverse = False
     courses.sort(key=key, reverse=reverse)
+    return courses, errors, sort, reverse
+
+
+@app.get("/")
+def index():
+    courses, errors, sort, reverse = sorted_courses()
     return render_template("index.html", courses=courses, errors=errors, sort=sort,
                            direction="desc" if reverse else "asc", reports_dir=reports_dir(), departments=DEPARTMENTS,
                            term_groups=term_groups(courses), any_without_term=any(not c["term"] for c in courses),
@@ -494,6 +502,48 @@ def compilation():
     html = render_template("compilation.html", rows=chosen, sections=sections, totals=totals,
                            css=inline_css(), generated=now)
     return html_download(html, f"course-accessibility-compilation-{now:%Y-%m-%d}.html")
+
+
+INVENTORY_COLUMNS = ["Course Name", "Term", "Instructor Name", "Priority Tracking", "Archive",
+                     "Needs Review", "Confirmed", "Date Confirmed"]
+
+
+def priority(score: float | None) -> str:
+    """Above 90 is done and below 50 comes first; 50–90 splits evenly into Second, Third and Fourth."""
+    if score is None:
+        return ""
+    if score > 90:
+        return "Completed"
+    if score < 50:
+        return "First: Highest"
+    return ("Second", "Third", "Fourth")[min(int((score - 50) / (40 / 3)), 2)]
+
+
+@app.get("/inventory")
+def inventory():
+    """Department Resource Inventory.csv: one row per checked course, in the table's order."""
+    selected = request.args.getlist("course")
+    rows, _ = load_all()
+    by_name = {r["course"]: r for r in rows}
+    chosen = [by_name[name] for name in dict.fromkeys(selected) if name in by_name]
+    if not chosen:
+        flash("Select at least one course for the Department Resource Inventory.", "error")
+        return redirect(url_for("index"))
+
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(INVENTORY_COLUMNS)
+    for c in chosen:
+        score = c["s"]["overall"]
+        # The first report scoring 80 or more, by when it was received.
+        first_confirmed = next((r["snap"].taken for r in load_course(c["course"])
+                                if r["s"]["overall"] is not None and r["s"]["overall"] >= 80), None)
+        w.writerow([c["label"], c["term"]["label"] if c["term"] else "", c["instructors"], priority(score), "",
+                    "" if score is None else str(score < 80), "" if score is None else str(score >= 80),
+                    f"{first_confirmed:%Y-%m-%d}" if first_confirmed else ""])
+    # utf-8-sig starts with a byte-order mark, which tells Excel the file is UTF-8.
+    return Response(out.getvalue().encode("utf-8-sig"), mimetype="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="Department Resource Inventory.csv"'})
 
 
 @app.post("/course/<course>/delete")
