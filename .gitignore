@@ -11,3 +11,7 @@ build/
 dist/
 # Office temporary files (Word/Excel/PowerPoint while a document is open)
 ~$*
+# Registrar reports (contain instructor names); the app keeps what it needs in the data folder
+*.xlsx
+# Reports live in the shared data folder (see Settings)
+CourseReports/

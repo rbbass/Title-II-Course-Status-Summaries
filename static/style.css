@@ -130,7 +130,9 @@ td.row-action { text-align: right; white-space: nowrap; }
 
 .table-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
 .table-toolbar label { font-weight: 600; }
-#select-dept, td.dept select {
+td.term { white-space: nowrap; }
+td.term abbr { text-decoration: none; cursor: help; }
+#select-dept, #select-term, td.dept select {
   font: inherit; font-size: 0.9rem; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--bg); color: var(--text); cursor: pointer;
 }
@@ -156,6 +158,9 @@ td.row-action form { margin: 0; }
 .settings #data_dir { max-width: 640px; }
 .settings form + .sub { margin-top: 16px; }
 .settings .hint { margin-top: 4px; }
+.add-subject { margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px 12px; }
+.add-subject legend { font-weight: 600; padding: 0 4px; }
+.add-subject input[type=text] { max-width: 120px; text-transform: uppercase; }
 .steps li { margin-bottom: 6px; }
 
 /* ---- report page */

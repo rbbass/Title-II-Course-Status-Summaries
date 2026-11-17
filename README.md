@@ -35,6 +35,18 @@ python -m venv .venv
 
 The server listens on `127.0.0.1` only.
 
+## Course History report
+
+Upload the registrar's **Course History - S0041.xlsx** on the All courses page to fill in each course's
+number (e.g. EE 347), instructor and department. A report named "Power Systems I 001 Fall 2026" matches
+rows titled POWER SYSTEMS I, section 001, term 202604; cross-listed rows are combined (EE 430/530).
+Matched courses are listed by number, and their department comes from the Subject column, mapped on
+the **Subjects** page (saved as `subject_departments.json` in the data folder; ECE and EE → ECE to start).
+Courses not in the spreadsheet keep their name and the Dept. dropdown.
+
+Only the needed columns are kept, in `course_history.json` in the data folder. The `.xlsx` itself is
+git-ignored: it names instructors and this repo is public.
+
 ## Shared data folder
 
 The **data folder** holds `CourseReports/` and `course_departments.json`. Choose it on the **Settings**

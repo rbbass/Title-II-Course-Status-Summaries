@@ -24,6 +24,8 @@
           <thead>
             <tr>
               <th scope="col">Course</th>
+              <th scope="col">Term</th>
+              <th scope="col">Instructor</th>
               <th scope="col" class="num">Overall score</th>
               <th scope="col" class="num">Since last report</th>
               <th scope="col" class="num">Files</th>
@@ -38,8 +40,9 @@
           <tbody>
             {% for c in rows %}{% set s = c.s %}
               <tr>
-                <th scope="row"><a href="#{{ sections[loop.index0].anchor }}">{{ c.course }}</a>
-                  {% if s.period %}<span class="sub">{{ s.period }}</span>{% endif %}</th>
+                <th scope="row"><a href="#{{ sections[loop.index0].anchor }}">{{ c.label }}</a></th>
+                <td class="term">{% if c.term %}<abbr title="{{ c.term.long }}">{{ c.term.label }}</abbr>{% else %}—{% endif %}</td>
+                <td>{{ c.instructors or "—" }}</td>
                 <td class="num"><strong>{{ s.overall|score }}</strong></td>
                 <td class="num">{% if c.changes %}{{ delta(c.changes.overall, c.prev_snap.taken|day) }}{% else %}<span class="delta flat">—</span>{% endif %}</td>
                 <td class="num">{{ s.processed|num }}</td>
@@ -54,6 +57,8 @@
           <tfoot>
             <tr>
               <th scope="row">All selected courses</th>
+              <td></td>
+              <td></td>
               <td class="num">—</td>
               <td class="num"></td>
               <td class="num">{{ totals.processed|num }}</td>
@@ -70,7 +75,7 @@
 
     {% for sec in sections %}{% set ctx = sec.ctx %}
       <article class="course-section" id="{{ sec.anchor }}" aria-labelledby="{{ sec.anchor }}-h">
-        <h2 id="{{ sec.anchor }}-h">{{ ctx.course }}</h2>
+        <h2 id="{{ sec.anchor }}-h">{{ sec.heading }}</h2>
         <p class="sub">Report received {{ ctx.snap.taken|when }}{% if ctx.s.period %} · reporting period {{ ctx.s.period }}{% endif %}
           · <a href="#overview-h">Back to overview</a></p>
         {{ sec.body }}

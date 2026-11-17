@@ -45,6 +45,17 @@
     <noscript><button type="submit" form="dept-form" class="secondary">Save departments</button></noscript>
     <span id="dept-status" class="sub-inline" role="status" aria-live="polite"></span>
   </div>
+  {# These controls belong to history-form (below), since forms can't nest. #}
+  <div class="table-toolbar">
+    <label for="history-file">Upload latest Course History - S0041.xlsx report</label>
+    <input type="file" id="history-file" name="history" form="history-form" accept=".xlsx" required
+           aria-describedby="history-status">
+    <button type="submit" form="history-form" class="secondary">Upload</button>
+    <span id="history-status" class="sub-inline">
+      {%- if history %}Using {{ history.source }}, uploaded {{ history.uploaded|day }}: {{ history.records|length|num }}
+        sections, {{ matched }} of {{ courses|length }} courses matched.
+      {%- else %}Not uploaded yet. It supplies course numbers, instructors and departments.{% endif %}</span>
+  </div>
   <div class="table-toolbar">
     <label for="select-dept">Select by Department</label>
     <select id="select-dept" aria-describedby="select-dept-hint">
@@ -52,7 +63,23 @@
       {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
       <option value="none">No department</option>
     </select>
-    <span id="select-dept-hint" class="visually-hidden">Checks every course in the chosen department and clears the rest.</span>
+    <span id="select-dept-hint" class="visually-hidden">Checks every course in the chosen department, and in the
+      academic year or term chosen below if any, and clears the rest.</span>
+  </div>
+  <div class="table-toolbar">
+    <label for="select-term">Select by Academic year and Term</label>
+    <select id="select-term" aria-describedby="select-term-hint">
+      <option value="">—</option>
+      {% for g in term_groups %}
+        <optgroup label="Academic year {{ g.ay }}">
+          <option value="ay:{{ g.ay }}">All of {{ g.ay }}</option>
+          {% for t in g.terms %}<option value="term:{{ t }}">{{ t }}</option>{% endfor %}
+        </optgroup>
+      {% endfor %}
+      {% if any_without_term %}<option value="none">No term in course name</option>{% endif %}
+    </select>
+    <span id="select-term-hint" class="visually-hidden">Checks every course in the chosen academic year or term, and
+      in the department chosen above if any, and clears the rest. Academic years run Fall through Summer.</span>
   </div>
   <div class="table-wrap">
     <table class="courses">
@@ -63,6 +90,8 @@
             <input type="checkbox" id="select-all" aria-label="Select all courses">
           </th>
           {{ sort_header("course", "Course") }}
+          {{ sort_header("term", "Term") }}
+          {{ sort_header("instructor", "Instructor") }}
           {{ sort_header("overall", "Overall score", true) }}
           {{ sort_header("change", "Since last report", true) }}
           {{ sort_header("files", "Files", true) }}
@@ -75,13 +104,14 @@
       <tbody>
         {% for c in courses %}
           {% set s = c.s %}
-          <tr>
+          <tr{% if c.term %} data-term="{{ c.term.label }}" data-ay="{{ c.term.ay }}"{% endif %} data-dept="{{ c.dept }}">
             <td class="select">
               <input type="checkbox" name="course" value="{{ c.course }}" id="pick-{{ loop.index }}"
                      aria-label="Include {{ c.course }}">
             </td>
-            <th scope="row"><a href="{{ url_for('course', course=c.course) }}">{{ c.course }}</a>
-              {% if s.period %}<span class="sub">{{ s.period }}</span>{% endif %}</th>
+            <th scope="row"><a href="{{ url_for('course', course=c.course) }}"{% if c.info %} title="{{ c.name }}"{% endif %}>{{ c.label }}</a></th>
+            <td class="term">{% if c.term %}<abbr title="{{ c.term.long }}">{{ c.term.label }}</abbr>{% else %}—{% endif %}</td>
+            <td>{{ c.instructors or "—" }}</td>
             <td class="num">
               <span class="score-cell">
                 <span class="bar" aria-hidden="true"><span style="width: {{ s.overall or 0 }}%"></span></span>
@@ -97,10 +127,14 @@
               {% if c.changes %}<span class="sub-inline">{{ delta(c.changes.severe, c.prev_snap.taken|day, false, 0) }}</span>{% endif %}</td>
             <td>{{ c.snap.taken|day }} <span class="sub">{{ c.count }} report{{ "s" if c.count != 1 }}</span></td>
             <td class="dept">
+              {% if c.dept_from_history %}
+              <span title="From the Course History report">{{ c.dept }}</span>
+              {% else %}
               <select name="dept::{{ c.course }}" form="dept-form" aria-label="Department for {{ c.course }}">
                 <option value=""{% if not c.dept %} selected{% endif %}>—</option>
                 {% for d in departments %}<option value="{{ d }}"{% if c.dept == d %} selected{% endif %}>{{ d }}</option>{% endfor %}
               </select>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -110,6 +144,8 @@
   </form>
   {# The Dept. dropdowns belong to this form (via form="dept-form"), so they don't ride along with the compilation. #}
   <form id="dept-form" method="post" action="{{ url_for('departments', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>
+  <form id="history-form" method="post" enctype="multipart/form-data"
+        action="{{ url_for('course_history_upload', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>
   <script>
     // Save a department as soon as it's chosen.
     (() => {
@@ -126,6 +162,7 @@
             });
             if (!res.ok) throw new Error(res.status);
             saved = select.value;
+            select.closest("tr").dataset.dept = select.value;
             status.textContent = `Saved: ${course} → ${select.value || "no department"}`;
           } catch (err) {
             select.value = saved;
@@ -149,19 +186,41 @@
         count.textContent = n ? `${n} of ${boxes.length} selected` : "";
       };
       const byDept = document.getElementById("select-dept");
-      // A row's department is whatever its Dept. dropdown shows now.
-      const deptOf = b => b.closest("tr").querySelector('select[form="dept-form"]').value;
-      all.addEventListener("change", () => { boxes.forEach(b => { b.checked = all.checked; }); byDept.value = ""; sync(); });
-      boxes.forEach(b => b.addEventListener("change", () => { byDept.value = ""; sync(); }));
-      byDept.addEventListener("change", () => {
-        if (!byDept.value) return;
-        const want = byDept.value === "none" ? "" : byDept.value;
-        boxes.forEach(b => { b.checked = deptOf(b) === want; });
+      const byTerm = document.getElementById("select-term");
+      const resetPickers = () => { byDept.value = ""; byTerm.value = ""; };
+      // A row's department, kept current as Dept. dropdowns change.
+      const deptOf = b => b.closest("tr").dataset.dept;
+      const rowOf = b => b.closest("tr").dataset;
+      all.addEventListener("change", () => { boxes.forEach(b => { b.checked = all.checked; }); resetPickers(); sync(); });
+      boxes.forEach(b => b.addEventListener("change", () => { resetPickers(); sync(); }));
+
+      // Both dropdowns together: check the courses matching every one that's set (— means any), clear the rest.
+      const deptMatch = () => {
+        const v = byDept.value;
+        if (!v) return () => true;
+        const want = v === "none" ? "" : v;
+        return b => deptOf(b) === want;
+      };
+      const termMatch = () => {
+        const v = byTerm.value;
+        if (!v) return () => true;
+        const [kind, want] = v.split(/:(.*)/);
+        return kind === "ay" ? b => rowOf(b).ay === want
+             : kind === "term" ? b => rowOf(b).term === want
+             : b => !rowOf(b).term;
+      };
+      const applyPickers = () => {
+        if (!byDept.value && !byTerm.value) return;  // nothing chosen: leave the checkboxes alone
+        const inDept = deptMatch(), inTerm = termMatch();
+        boxes.forEach(b => { b.checked = inDept(b) && inTerm(b); });
         sync();
         if (!boxes.some(b => b.checked)) {
-          count.textContent = `No courses ${want ? "in " + want : "without a department"}.`;
+          const chosen = [byDept, byTerm].filter(p => p.value).map(p => p.selectedOptions[0].textContent.trim());
+          count.textContent = `No courses match ${chosen.join(" and ")}.`;
         }
-      });
+      };
+      byDept.addEventListener("change", applyPickers);
+      byTerm.addEventListener("change", applyPickers);
       form.addEventListener("submit", e => {
         if (!boxes.some(b => b.checked)) {
           e.preventDefault();

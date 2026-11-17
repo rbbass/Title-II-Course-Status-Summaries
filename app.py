@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import os
+import re
 import socket
 import threading
 import webbrowser
@@ -31,12 +32,13 @@ from markupsafe import Markup, escape
 import accessibility_report as ar
 import app_settings
 import gmail_source
+import course_history
 import report_store
 
 app = Flask(__name__, template_folder=app_settings.BUNDLE_DIR / "templates",
             static_folder=app_settings.BUNDLE_DIR / "static")
 app.config["DATA_DIR"] = app_settings.saved_data_dir()  # None until chosen on the Settings page
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # room for a full Course History spreadsheet
 app.secret_key = os.urandom(16)
 
 app.jinja_env.filters["score"] = ar.fmt_score
@@ -45,17 +47,44 @@ app.jinja_env.filters["when"] = lambda t: f"{t:%b} {t.day}, {t.year}, {t:%I:%M %
 app.jinja_env.filters["day"] = lambda t: f"{t:%b} {t.day}, {t.year}"
 
 SORTS = {
-    "course": (lambda c: c["course"].lower(), False),
+    "course": (lambda c: c["label"].lower(), False),
+    "term": (lambda c: (c["term"]["key"] if c["term"] else (0, 0), c["name"].lower()), True),  # newest first
     "overall": (lambda c: c["s"]["overall"] if c["s"]["overall"] is not None else -1, False),
     "change": (lambda c: c["changes"]["overall"] if c["changes"] else 0, False),
     "files": (lambda c: c["s"]["processed"], True),
     "remediated": (lambda c: c["s"]["remediated"] / c["s"]["processed"] if c["s"]["processed"] else 0, False),
     "severe": (lambda c: c["s"]["severities"][0]["total"], True),
     "updated": (lambda c: c["snap"].taken, True),
+    "instructor": (lambda c: (c["instructor_sort"] or "~", c["label"].lower()), False),  # unknown last
     "dept": (lambda c: (c["dept"] or "~", c["course"].lower()), False),  # unassigned last
 }
 
 DEPARTMENTS = ["CEE", "CS", "ECE", "ETM", "MME"]
+
+# Terms in calendar order. The academic year starts in Fall: Fall 2026 – Summer 2027 is 2026–27.
+SEASONS = {"Winter": 0, "Spring": 1, "Summer": 2, "Fall": 3}
+SEASON_ABBR = {"Winter": "W", "Spring": "Sp", "Summer": "Su", "Fall": "F"}
+TERM_RE = re.compile(r"^(?P<name>.*?)\s+(?P<season>Winter|Spring|Summer|Fall)\s+(?P<year>\d{4})$", re.IGNORECASE)
+
+
+def split_term(course: str) -> tuple[str, dict | None]:
+    """'Power Systems I 001 Fall 2026' -> ('Power Systems I 001', {'label': 'F26', 'long': 'Fall 2026', ...})."""
+    m = TERM_RE.match(course)
+    if not m:
+        return course, None
+    season, year = m["season"].title(), int(m["year"])
+    start = year if season == "Fall" else year - 1
+    return m["name"], {"label": f"{SEASON_ABBR[season]}{year % 100:02d}", "long": f"{season} {year}", "key": (year, SEASONS[season]), "season": season, "year": year,
+                       "ay": f"{start}–{(start + 1) % 100:02d}"}
+
+
+def term_groups(rows: list[dict]) -> list[dict]:
+    """Terms present in rows, grouped by academic year, newest first: [{'ay': '2026–27', 'terms': ['2026 Fall']}]."""
+    terms = sorted({(r["term"]["key"], r["term"]["label"], r["term"]["ay"]) for r in rows if r["term"]}, reverse=True)
+    groups: dict[str, list[str]] = {}
+    for _, label, ay in terms:
+        groups.setdefault(ay, []).append(label)
+    return [{"ay": ay, "terms": labels} for ay, labels in groups.items()]
 
 
 # --------------------------------------------------------------------------- data
@@ -119,6 +148,8 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
     report_store.file_loose(root)
     rows, errors = [], [(p.name, "couldn't be read as a course-report export") for p in root.glob("*.json")]
     departments = load_departments()
+    history = course_history.load(data_dir())
+    subjects = course_history.load_subjects(data_dir())
     for course, snaps in report_store.courses(root).items():
         try:
             latest = load_snapshot(snaps[-1])
@@ -126,10 +157,32 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
         except (OSError, ValueError, KeyError, TypeError) as e:
             errors.append((course, str(e)))
             continue
-        rows.append({"course": course, "snap": latest["snap"], "s": latest["s"], "count": len(snaps),
-                     "dept": departments.get(course, ""),
+        name, term = split_term(course)
+        # Course number, instructor and department come from the Course History report when the
+        # course is in it; otherwise the department is whatever was chosen in the Dept. column.
+        info = (course_history.lookup(history, name, term["season"], term["year"], subjects, DEPARTMENTS)
+                if term else None)
+        instructors = info["instructors"] if info else []
+        rows.append({"course": course, "name": name, "term": term, "info": info,
+                     "label": info["code"] if info else name,  # "EE 347" once matched
+                     "instructors": ", ".join(f"{i['first'][:1]}. {i['last']}" if i["first"] else i["last"]
+                                              for i in instructors),  # "R. Bass"
+                     "instructor_sort": ", ".join(f"{i['last']} {i['first']}".lower() for i in instructors),
+                     "snap": latest["snap"], "s": latest["s"], "count": len(snaps),
+                     "dept": (info and info["dept"]) or departments.get(course, ""),
+                     "dept_from_history": bool(info and info["dept"]),
                      "prev_snap": prev["snap"] if prev else None,
                      "changes": changes(latest["s"], prev["s"] if prev else None)})
+
+    # Two sections of one course in the same term would share a label: add the section, "EE 347-001".
+    seen: dict[tuple, int] = {}
+    for r in rows:
+        if r["info"]:
+            key = (r["label"], r["term"]["label"])
+            seen[key] = seen.get(key, 0) + 1
+    for r in rows:
+        if r["info"] and seen[(r["label"], r["term"]["label"])] > 1:
+            r["label"] = f"{r['label']}-{r['info']['sec']}"
     return rows, errors
 
 
@@ -258,6 +311,8 @@ def index():
     courses.sort(key=key, reverse=reverse)
     return render_template("index.html", courses=courses, errors=errors, sort=sort,
                            direction="desc" if reverse else "asc", reports_dir=reports_dir(), departments=DEPARTMENTS,
+                           term_groups=term_groups(courses), any_without_term=any(not c["term"] for c in courses),
+                           history=course_history.load(data_dir()), matched=sum(1 for c in courses if c["info"]),
                            mail=gmail_source.status(), settings=gmail_source.load_settings())
 
 
@@ -281,6 +336,62 @@ def departments():
         return "", 204
     flash("Departments saved.", "ok")
     return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
+
+
+@app.post("/course-history")
+def course_history_upload():
+    """Replace the stored Course History details with those from an uploaded S0041 spreadsheet."""
+    f = request.files.get("history")
+    if not f or not f.filename:
+        flash("Choose the Course History .xlsx file to upload.", "error")
+    elif not f.filename.lower().endswith(".xlsx"):
+        flash(f"{f.filename} isn't an .xlsx file. Upload the Excel version of the Course History report.", "error")
+    else:
+        name = Path(f.filename.replace("\\", "/")).name
+        try:
+            records = course_history.parse_xlsx(f.stream)
+        except course_history.HistoryError as e:
+            flash(f"Not loaded: {name} {e}.", "error")
+        else:
+            course_history.save(data_dir(), records, name)
+            courses, _ = load_all()
+            matched = sum(1 for c in courses if c["info"])
+            flash(f"Loaded {len(records):,} sections from {name}. Matched {matched} of {len(courses)} "
+                  f"course{'s' if len(courses) != 1 else ''}.", "ok")
+    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
+
+
+# --------------------------------------------------------------------------- routes: subjects
+
+@app.get("/subjects")
+def subjects():
+    """Subject → department mapping for courses matched in the Course History report."""
+    mapping = course_history.load_subjects(data_dir())
+    counts = course_history.subject_counts(course_history.load(data_dir()))
+    rows = [{"subject": s, "sections": counts.get(s, 0),
+             "dept": course_history.department(s, mapping, DEPARTMENTS)}
+            for s in sorted(set(counts) | set(mapping))]
+    return render_template("subjects.html", rows=rows, departments=DEPARTMENTS)
+
+
+@app.post("/subjects")
+def subjects_save():
+    """Fields "subject::<code>" hold each subject's department; new_subject/new_dept add one."""
+    mapping = course_history.load_subjects(data_dir())
+    form = dict(request.form)
+    new = form.pop("new_subject", "").strip().upper()
+    if new:
+        form[f"subject::{new}"] = form.get("new_dept", "")
+    form.pop("new_dept", None)
+    for key, value in form.items():
+        subject = key.removeprefix("subject::").strip().upper()
+        if not key.startswith("subject::") or not re.fullmatch(r"[A-Z]{1,6}", subject) \
+                or (value and value not in DEPARTMENTS):
+            abort(400)
+        mapping[subject] = value  # "" records "no department", overriding a same-named one
+    course_history.save_subjects(data_dir(), mapping)
+    flash("Subject departments saved." + (f" Added {new}." if new else ""), "ok")
+    return redirect(url_for("subjects"))
 
 
 @app.post("/upload")
@@ -370,7 +481,8 @@ def compilation():
     for n, row in enumerate(chosen, 1):
         ctx = report_context(row["course"], None, uid=f"c{n}-")
         body = render_template("_report_body.html", standalone=True, h=3, show_notes=False, **ctx)
-        sections.append({"anchor": f"c{n}", "ctx": ctx, "body": Markup(body)})
+        heading = f"{row['label']}, {row['course']}" if row["info"] else row["course"]  # "EE 347, Power Systems I …"
+        sections.append({"anchor": f"c{n}", "ctx": ctx, "heading": heading, "body": Markup(body)})
 
     totals = {
         "processed": sum(r["s"]["processed"] for r in chosen),

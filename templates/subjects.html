@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Subjects · Course Accessibility Reports{% endblock %}
+
+{% block content %}
+  <h1>Subjects</h1>
+  <p class="lede">Which department each subject belongs to. Courses matched in the Course History report take their
+    department from their subject; the choices are saved in the shared data folder.</p>
+
+  <form method="post" action="{{ url_for('subjects_save') }}" class="settings">
+    <div class="table-wrap">
+      <table class="courses">
+        <caption class="visually-hidden">Subjects and their departments</caption>
+        <thead>
+          <tr>
+            <th scope="col">Subject</th>
+            <th scope="col" class="num">Sections in Course History</th>
+            <th scope="col">Dept.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <th scope="row">{{ r.subject }}</th>
+              <td class="num">{{ r.sections|num if r.sections else "—" }}</td>
+              <td class="dept">
+                <select name="subject::{{ r.subject }}" aria-label="Department for {{ r.subject }}">
+                  <option value=""{% if not r.dept %} selected{% endif %}>—</option>
+                  {% for d in departments %}<option value="{{ d }}"{% if r.dept == d %} selected{% endif %}>{{ d }}</option>{% endfor %}
+                </select>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3">No subjects yet. Upload the Course History report on the All courses page, or add one below.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <fieldset class="add-subject">
+      <legend>Add a subject</legend>
+      <label for="new_subject">Subject code</label>
+      <input type="text" id="new_subject" name="new_subject" pattern="[A-Za-z]{1,6}" maxlength="6"
+             autocomplete="off" spellcheck="false" aria-describedby="new-subject-hint">
+      <p class="hint" id="new-subject-hint">For a subject not in the Course History report yet, e.g. ME.</p>
+      <label for="new_dept">Dept.</label>
+      <select id="new_dept" name="new_dept">
+        <option value="">—</option>
+        {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+      </select>
+    </fieldset>
+
+    <p><button type="submit">Save</button></p>
+  </form>
+{% endblock %}
