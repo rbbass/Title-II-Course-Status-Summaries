@@ -23,11 +23,11 @@ python -m venv .venv
   Check courses (or the header checkbox for all) and click **Generate Compilation Report** to download
   one self-contained HTML file: an overview table with totals, then each selected course's latest report.
   **Generate Department Resource Inventory** writes the checked courses into each one's department
-  workbook, `Department Instructional Digital Resource Reports/Instructional Digital Resource Inventory -
-  <dept>.xlsx` in the data folder (on the "Department Resource Inventory" sheet). A course already there
-  (same Course Name and Term) is updated; others are added below the last row. Archive is never written,
-  and blank values never overwrite what's in the sheet. Courses with no department are skipped. Close the
-  workbook in Excel first, or the save fails.
+  Google Sheet, **Instructional Digital Resource Inventory - &lt;dept&gt;** (found by name on Google Drive),
+  on its "Department Resource Inventory" sheet. A course already there (same Course Name and Term) is
+  updated; others are added below the last row, and the sheet's table is extended to cover them. Archive
+  is never written, and blank values never overwrite what's in the sheet. Courses with no department are
+  skipped. See [Writing to Google Sheets](#writing-to-google-sheets) for the one-time setup.
 - **Course page** — pick any report received for the course. Shows changes since the previous report, a
   history chart and table across all reports, the monthly score trend, where-to-start priorities, file
   types, and severe/major/minor issue tables.
@@ -75,7 +75,7 @@ inside Google Drive), double-click `Course Accessibility Reports.exe`, and pick 
 run. A console window shows the app is running; closing it stops the app. Windows may warn about an
 unsigned app the first time (**More info → Run anyway**). Rebuild and resend after changing the app.
 
-The packaged app keeps its `app_settings.json`, and any Gmail sign-in, next to the `.exe`.
+The packaged app keeps its `app_settings.json`, and any Gmail or Google Sheets sign-in, next to the `.exe`.
 
 ## Importing reports from Gmail
 
@@ -92,6 +92,19 @@ message is stored as a snapshot stamped with the time the email arrived. Message
 skipped, and the same report is never stored twice.
 
 `secrets/` (OAuth client and token) and `mail_settings.json` are git-ignored — this repo is public.
+
+## Writing to Google Sheets
+
+**Generate Department Resource Inventory** uses the same OAuth client as Gmail (`secrets/credentials.json`).
+One-time setup:
+
+1. In the same Google Cloud project, enable the **Google Sheets API** and the **Google Drive API**.
+2. Click **Generate Department Resource Inventory**. The first time, a browser tab asks you to sign in
+   and allow the app to edit your spreadsheets and see your Drive file names (used only to find each
+   department's sheet by name). The sign-in is saved to `secrets/sheets_token.json`; delete that file to
+   sign in again.
+
+The account you sign in with needs edit access to the department sheets.
 
 ## How reports are stored
 

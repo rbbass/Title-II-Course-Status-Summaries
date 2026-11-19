@@ -33,7 +33,7 @@ import accessibility_report as ar
 import app_settings
 import gmail_source
 import course_history
-import inventory_xlsx
+import sheets_inventory
 import report_store
 
 app = Flask(__name__, template_folder=app_settings.BUNDLE_DIR / "templates",
@@ -540,14 +540,9 @@ def priority(score: float | None) -> str:
     return ("Second", "Third", "Fourth")[min(int((score - 50) / (40 / 3)), 2)]
 
 
-def inventory_file(dept: str) -> Path:
-    """A department's inventory workbook, next to its compilation-report folder on the shared drive."""
-    return data_dir() / COMPILATIONS_DIR / f"Instructional Digital Resource Inventory - {dept}.xlsx"
-
-
 @app.get("/inventory")
 def inventory():
-    """Put the checked courses into each one's department inventory workbook (see inventory_xlsx.py)."""
+    """Put the checked courses into each one's department inventory Google Sheet (see sheets_inventory.py)."""
     selected = request.args.getlist("course")
     rows, _ = load_all()
     by_name = {r["course"]: r for r in rows}
@@ -574,21 +569,23 @@ def inventory():
             "confirmed": None if score is None else score >= 80,
             "date": first_confirmed.date() if first_confirmed else None})
 
-    for dept, records in sorted(by_dept.items()):
-        path = inventory_file(dept)
-        if not path.is_file():
-            flash(f"{dept}: no inventory spreadsheet at {path}, so its {len(records)} course"
-                  f"{'s were' if len(records) != 1 else ' was'} not added.", "error")
-            continue
+    if by_dept:
         try:
-            updated, added = inventory_xlsx.update(path, records)
-        except PermissionError:
-            flash(f"{dept}: couldn't save {path.name}. If it's open in Excel, close it and try again.", "error")
-        except (OSError, ValueError, KeyError) as e:
-            flash(f"{dept}: couldn't update {path.name}: {getattr(e, 'strerror', None) or e}", "error")
+            inv = sheets_inventory.Inventory()  # the first time, opens a browser tab to sign in to Google
+        except Exception as e:  # missing libraries or client file, sign-in cancelled, network
+            flash(f"Couldn't connect to Google Sheets: {e}", "error")
+            by_dept = {}
+    for dept, records in sorted(by_dept.items()):
+        name = sheets_inventory.NAME.format(dept=dept)
+        try:
+            updated, added = inv.update(dept, records)
+        except Exception as e:  # SheetsError, or a Google API error (no access, API not enabled, ...)
+            reason = getattr(e, "reason", None) or e
+            flash(f"{dept}: couldn't update “{name}”: {reason}. Its {len(records)} course"
+                  f"{'s were' if len(records) != 1 else ' was'} not added.", "error")
         else:
-            flash(f"{dept}: {added} course{'s' if added != 1 else ''} added and {updated} updated in {path.name}.",
-                  "ok")
+            flash(f"{dept}: {added} course{'s' if added != 1 else ''} added and {updated} updated in "
+                  f"“{name}”.", "ok")
     if no_dept:
         flash(f"Skipped {len(no_dept)} course{'s' if len(no_dept) != 1 else ''} with no department: "
               + ", ".join(no_dept) + ". Choose a department in the Dept. column, then try again.", "error")

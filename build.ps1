@@ -8,13 +8,15 @@ $py = ".venv\Scripts\python.exe"
 $name = "Course Accessibility Reports"
 
 & $py -m pip install --quiet pyinstaller
-# The Gmail API description ships with the client library; bundle only Gmail's, not every Google API's.
-$gmail = & $py -c "import googleapiclient, pathlib; print(pathlib.Path(googleapiclient.__file__).parent / 'discovery_cache/documents/gmail.v1.json')"
+# The Google API descriptions ship with the client library; bundle only the ones the app uses
+# (Gmail for email import, Sheets and Drive for the department inventory), not every Google API's.
+$docs = & $py -c "import googleapiclient, pathlib; print(pathlib.Path(googleapiclient.__file__).parent / 'discovery_cache/documents')"
+$apis = "gmail.v1", "sheets.v4", "drive.v3" | ForEach-Object { "--add-data"; "$docs\$_.json;googleapiclient\discovery_cache\documents" }
 
 & $py -m PyInstaller app.py --name $name --onedir --noconfirm --clean --specpath build `
     --add-data "$PSScriptRoot\templates;templates" `
     --add-data "$PSScriptRoot\static;static" `
-    --add-data "$gmail;googleapiclient\discovery_cache\documents" `
+    @apis `
     --exclude-module matplotlib
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
