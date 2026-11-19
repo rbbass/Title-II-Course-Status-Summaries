@@ -16,8 +16,6 @@ dropping an export into CourseReports/, where it is filed automatically.
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import json
 import math
 import os
@@ -35,6 +33,7 @@ import accessibility_report as ar
 import app_settings
 import gmail_source
 import course_history
+import inventory_xlsx
 import report_store
 
 app = Flask(__name__, template_folder=app_settings.BUNDLE_DIR / "templates",
@@ -98,6 +97,14 @@ def data_dir() -> Path | None:
 
 def reports_dir() -> Path:
     return data_dir() / app_settings.REPORTS_NAME
+
+
+COMPILATIONS_DIR = "Department Instructional Digital Resource Reports"
+
+
+def compilations_dir(dept: str) -> Path:
+    """Where compilation reports for a department (or "Other") are saved, in the shared data folder."""
+    return data_dir() / COMPILATIONS_DIR / f"Course Accessibility Compilation Reports - {dept}"
 
 
 def departments_file() -> Path:
@@ -501,11 +508,25 @@ def compilation():
     now = datetime.now()
     html = render_template("compilation.html", rows=chosen, sections=sections, totals=totals,
                            css=inline_css(), generated=now)
-    return html_download(html, f"course-accessibility-compilation-{now:%Y-%m-%d}.html")
 
-
-INVENTORY_COLUMNS = ["Course Name", "Term", "Instructor Name", "Priority Tracking", "Archive",
-                     "Needs Review", "Confirmed", "Date Confirmed"]
+    # Saved to the shared drive, in the folder for the department chosen under "Select by Department".
+    dept = request.args.get("dept", "")
+    folder = compilations_dir(dept if dept in DEPARTMENTS else "Other")
+    stem = f"course-accessibility-compilation-{now:%Y-%m-%d_%H%M%S}"
+    path = folder / f"{stem}.html"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        n = 1
+        while path.exists():  # never overwrite an earlier report
+            n += 1
+            path = folder / f"{stem}-{n}.html"
+        path.write_text(html, encoding="utf-8")
+    except OSError as e:
+        flash(f"Couldn't save the compilation report to {folder}: {e.strerror or e}", "error")
+    else:
+        flash(f"Saved the compilation report of {len(chosen)} course{'s' if len(chosen) != 1 else ''} "
+              f"to {path}", "ok")
+    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
 
 
 def priority(score: float | None) -> str:
@@ -519,31 +540,59 @@ def priority(score: float | None) -> str:
     return ("Second", "Third", "Fourth")[min(int((score - 50) / (40 / 3)), 2)]
 
 
+def inventory_file(dept: str) -> Path:
+    """A department's inventory workbook, next to its compilation-report folder on the shared drive."""
+    return data_dir() / COMPILATIONS_DIR / f"Instructional Digital Resource Inventory - {dept}.xlsx"
+
+
 @app.get("/inventory")
 def inventory():
-    """Department Resource Inventory.csv: one row per checked course, in the table's order."""
+    """Put the checked courses into each one's department inventory workbook (see inventory_xlsx.py)."""
     selected = request.args.getlist("course")
     rows, _ = load_all()
     by_name = {r["course"]: r for r in rows}
     chosen = [by_name[name] for name in dict.fromkeys(selected) if name in by_name]
+    back = redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
     if not chosen:
         flash("Select at least one course for the Department Resource Inventory.", "error")
-        return redirect(url_for("index"))
+        return back
 
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(INVENTORY_COLUMNS)
+    by_dept: dict[str, list[dict]] = {}
+    no_dept = []
     for c in chosen:
+        if c["dept"] not in DEPARTMENTS:
+            no_dept.append(c["label"])
+            continue
         score = c["s"]["overall"]
         # The first report scoring 80 or more, by when it was received.
         first_confirmed = next((r["snap"].taken for r in load_course(c["course"])
                                 if r["s"]["overall"] is not None and r["s"]["overall"] >= 80), None)
-        w.writerow([c["label"], c["term"]["label"] if c["term"] else "", c["instructors"], priority(score), "",
-                    "" if score is None else str(score < 80), "" if score is None else str(score >= 80),
-                    f"{first_confirmed:%Y-%m-%d}" if first_confirmed else ""])
-    # utf-8-sig starts with a byte-order mark, which tells Excel the file is UTF-8.
-    return Response(out.getvalue().encode("utf-8-sig"), mimetype="text/csv",
-                    headers={"Content-Disposition": 'attachment; filename="Department Resource Inventory.csv"'})
+        by_dept.setdefault(c["dept"], []).append({
+            "course": c["label"], "term": c["term"]["label"] if c["term"] else "",
+            "instructor": c["instructors"], "priority": priority(score),
+            "needs_review": None if score is None else score < 80,
+            "confirmed": None if score is None else score >= 80,
+            "date": first_confirmed.date() if first_confirmed else None})
+
+    for dept, records in sorted(by_dept.items()):
+        path = inventory_file(dept)
+        if not path.is_file():
+            flash(f"{dept}: no inventory spreadsheet at {path}, so its {len(records)} course"
+                  f"{'s were' if len(records) != 1 else ' was'} not added.", "error")
+            continue
+        try:
+            updated, added = inventory_xlsx.update(path, records)
+        except PermissionError:
+            flash(f"{dept}: couldn't save {path.name}. If it's open in Excel, close it and try again.", "error")
+        except (OSError, ValueError, KeyError) as e:
+            flash(f"{dept}: couldn't update {path.name}: {getattr(e, 'strerror', None) or e}", "error")
+        else:
+            flash(f"{dept}: {added} course{'s' if added != 1 else ''} added and {updated} updated in {path.name}.",
+                  "ok")
+    if no_dept:
+        flash(f"Skipped {len(no_dept)} course{'s' if len(no_dept) != 1 else ''} with no department: "
+              + ", ".join(no_dept) + ". Choose a department in the Dept. column, then try again.", "error")
+    return back
 
 
 @app.post("/course/<course>/delete")

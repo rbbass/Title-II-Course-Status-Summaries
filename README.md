@@ -22,6 +22,12 @@ python -m venv .venv
   immediately to `course_departments.json`.
   Check courses (or the header checkbox for all) and click **Generate Compilation Report** to download
   one self-contained HTML file: an overview table with totals, then each selected course's latest report.
+  **Generate Department Resource Inventory** writes the checked courses into each one's department
+  workbook, `Department Instructional Digital Resource Reports/Instructional Digital Resource Inventory -
+  <dept>.xlsx` in the data folder (on the "Department Resource Inventory" sheet). A course already there
+  (same Course Name and Term) is updated; others are added below the last row. Archive is never written,
+  and blank values never overwrite what's in the sheet. Courses with no department are skipped. Close the
+  workbook in Excel first, or the save fails.
 - **Course page** — pick any report received for the course. Shows changes since the previous report, a
   history chart and table across all reports, the monthly score trend, where-to-start priorities, file
   types, and severe/major/minor issue tables.
