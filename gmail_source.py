@@ -172,7 +172,7 @@ def check(root: Path) -> CheckResult:
                 except ValueError as e:
                     result.problems.append(f"{name} ({received:%Y-%m-%d}): {e}")
                     continue
-                course = ar.course_from_filename(Path(name))
+                course = ar.course_from_filename(name)
                 path, created = report_store.save(root, course, data, received)
                 if created:
                     result.saved.append(f"{path.parent.name} — {received:%Y-%m-%d %H:%M}")

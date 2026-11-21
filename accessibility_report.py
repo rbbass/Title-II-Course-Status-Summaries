@@ -75,11 +75,18 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "report"
 
 
-def course_from_filename(path: Path) -> str:
+def course_from_filename(path: Path | str) -> str:
     """'course-report (Power Systems I 001 Fall 2026).json' -> 'Power Systems I 001 Fall 2026'.
 
-    A timestamped snapshot ('<course>/2026-10-28_102800.json') is named by its folder.
+    A timestamped snapshot ('<course>/2026-10-28_102800.json') is named by its folder. Pass an
+    attachment or upload name as a str: titles can hold a slash ('Finite Element Mod/anlys'),
+    which a Path would take for a folder.
     """
+    if isinstance(path, str):
+        match = re.search(r"\((.+)\)", re.sub(r"\.json$", "", path, flags=re.I))
+        if match:
+            return match.group(1).strip()
+        path = Path(path.replace("\\", "/"))
     match = re.search(r"\((.+)\)", path.stem)
     if match:
         return match.group(1)

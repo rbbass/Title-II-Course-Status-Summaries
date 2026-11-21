@@ -29,7 +29,9 @@ DEFAULT_SUBJECT_DEPARTMENTS = {"ECE": "ECE", "EE": "ECE"}
 COLUMNS = {"subject": "Subject", "course": "Course", "term": "Term", "sec": "Sec", "title": "Title",
            "last": "Instructor_Last_Name", "first": "Instructor_First_Name"}
 
-SECTION_RE = re.compile(r"^(?P<title>.+?)\s+(?P<sec>\d{1,3})$")
+# "Power Systems I 001", or with the course spelled out: "Lab For Ece 221 ECE-221L-002".
+SECTION_RE = re.compile(r"^(?P<title>.+?)\s+(?:(?P<subject>[A-Za-z]{1,6})-(?P<course>\w+)-(?P<xsec>\w{1,4})"
+                        r"|(?P<sec>\d{1,3}))$")
 
 
 class HistoryError(ValueError):
@@ -127,7 +129,9 @@ def load(data_dir: Path) -> dict | None:
 # --------------------------------------------------------------------------- matching
 
 def _norm(title: str) -> str:
-    return " ".join(title.upper().split())
+    """Uppercase words, ignoring punctuation: course folders can't hold ':' or '/' (saved as '_'), so
+    'Sem_ Intro Research & Training' matches 'SEM: INTRO RESEARCH & TRAINING'."""
+    return " ".join(re.sub(r"[^A-Z0-9&]+", " ", title.upper()).split())
 
 
 def _same_section(a: str, b: str) -> bool:
@@ -151,10 +155,12 @@ def lookup(history: dict | None, name: str, season: str, year: int,
     if not history:
         return None
     m = SECTION_RE.match(name)
-    title, sec = (m["title"], m["sec"]) if m else (name, None)
+    title, sec = (m["title"], m["sec"] or m["xsec"]) if m else (name, None)
+    subject, number = (m["subject"].upper(), m["course"].upper()) if m and m["subject"] else (None, None)
     term, title = f"{year}{SEASON_CODES[season]}", _norm(title)
     hits = [r for r in history["records"] if r["term"] == term and _norm(r["title"]) == title
-            and (sec is None or _same_section(r["sec"], sec))]
+            and (sec is None or _same_section(r["sec"], sec))
+            and (subject is None or (r["subject"].upper(), r["course"].upper()) == (subject, number))]
     if not hits:
         return None
 

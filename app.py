@@ -421,7 +421,7 @@ def upload():
         except ValueError as e:
             rejected.append(f"{f.filename}: {e}")
             continue
-        course = ar.course_from_filename(Path(f.filename.replace("\\", "/")))
+        course = ar.course_from_filename(f.filename)
         path, created = report_store.save(reports_dir(), course, data, now)
         saved.append(path.parent.name + ("" if created else " (already stored)"))
 
