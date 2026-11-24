@@ -128,9 +128,23 @@ def parse_export(raw: bytes) -> dict:
     return data
 
 
+def cumulative(data: dict) -> list[dict]:
+    """The "Cumulative Score" months, with anything that isn't a number read as no score.
+
+    A course with no files yet comes as one placeholder row: {"Date": "N/A", "Overall": "N/A", ...}.
+    """
+    rows = []
+    for m in data.get("Cumulative Score", []):
+        if m.get("Date") in (None, "", "N/A"):
+            continue
+        rows.append({k: v if k == "Date" or (isinstance(v, (int, float)) and not isinstance(v, bool)) else None
+                     for k, v in m.items()})
+    return rows
+
+
 def scored_months(data: dict) -> list[dict]:
     """Months that have an Overall score (earlier empty months are dropped)."""
-    return [m for m in data.get("Cumulative Score", []) if m.get("Overall") is not None]
+    return [m for m in cumulative(data) if m.get("Overall") is not None]
 
 
 def score_series(months: list[dict]) -> dict[str, list]:
@@ -270,7 +284,7 @@ def summarize(data: dict) -> dict:
         "period": reporting_period(data),
         "months": months,
         "series": score_series(months),
-        "empty_months": [m["Date"] for m in data.get("Cumulative Score", []) if m.get("Overall") is None],
+        "empty_months": [m["Date"] for m in cumulative(data) if m.get("Overall") is None],
         "delta": months[-1]["Overall"] - months[0]["Overall"] if len(months) > 1 else None,
         "latest_label": latest.get("Date", "latest"),
         "files": files,

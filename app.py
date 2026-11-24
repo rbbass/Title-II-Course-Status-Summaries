@@ -529,6 +529,11 @@ def compilation():
     return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
 
 
+def inventory_score(s: dict) -> float | None:
+    """A report's Overall score, or None for a course with no files or scores yet (YuJa reports those as 0)."""
+    return s["overall"] if s["processed"] or s["months"] else None
+
+
 def priority(score: float | None) -> str:
     """Above 90 is done and below 50 comes first; 50–90 splits evenly into Second, Third and Fourth."""
     if score is None:
@@ -558,10 +563,10 @@ def inventory():
         if c["dept"] not in DEPARTMENTS:
             no_dept.append(c["label"])
             continue
-        score = c["s"]["overall"]
+        score = inventory_score(c["s"])
         # The first report scoring 80 or more, by when it was received.
         first_confirmed = next((r["snap"].taken for r in load_course(c["course"])
-                                if r["s"]["overall"] is not None and r["s"]["overall"] >= 80), None)
+                                if (inventory_score(r["s"]) or 0) >= 80), None)
         by_dept.setdefault(c["dept"], []).append({
             "course": c["label"], "term": c["term"]["label"] if c["term"] else "",
             "instructor": c["instructors"], "priority": priority(score),
