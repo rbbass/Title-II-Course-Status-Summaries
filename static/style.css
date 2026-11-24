@@ -162,6 +162,18 @@ td.row-action form { margin: 0; }
 .add-subject legend { font-weight: 600; padding: 0 4px; }
 .add-subject input[type=text] { max-width: 120px; text-transform: uppercase; }
 .steps li { margin-bottom: 6px; }
+.history-upload { margin: 0 0 32px; }
+.history-upload h2, .upload h2 { margin-bottom: 8px; }
+.section-h { margin-top: 32px; }
+.add-dept input[type=text] { max-width: 420px; }
+.add-dept #dept-code { max-width: 120px; text-transform: uppercase; }
+td.dept-actions { width: 1%; white-space: nowrap; }
+td.dept-actions details { margin: 0; }
+td.dept-actions details[open] { white-space: normal; min-width: 280px; }
+td.dept-actions form { margin: 8px 0 0; }
+td.dept-actions label { margin-top: 6px; }
+td.dept-actions input.code { max-width: 120px; text-transform: uppercase; }
+.remove-dept { border-top: 1px solid var(--border); padding-top: 8px; }
 
 /* ---- report page */
 .picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; }

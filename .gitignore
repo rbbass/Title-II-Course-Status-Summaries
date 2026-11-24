@@ -16,3 +16,7 @@ dist/
 # Reports live in the shared data folder (see Settings)
 CourseReports/
 course_departments.json
+departments.json
+subject_departments.json
+course_history.json
+Department Instructional Digital Resource Reports/

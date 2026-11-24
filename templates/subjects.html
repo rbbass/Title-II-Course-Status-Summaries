@@ -6,6 +6,21 @@
   <p class="lede">Which department each subject belongs to. Courses matched in the Course History report take their
     department from their subject; the choices are saved in the shared data folder.</p>
 
+  <section class="upload history-upload" aria-labelledby="history-h">
+    <h2 id="history-h">Course History report</h2>
+    <form method="post" action="{{ url_for('course_history_upload') }}" enctype="multipart/form-data">
+      <label for="history-file">Upload latest Course History - S0041.xlsx report</label>
+      <input type="file" id="history-file" name="history" accept=".xlsx" required aria-describedby="history-status">
+      <p class="hint" id="history-status">
+        {%- if history %}Using {{ history.source }}, uploaded {{ history.uploaded|day }}: {{ history.records|length|num }}
+          sections, {{ matched }} of {{ total }} course{{ "s" if total != 1 }} matched.
+        {%- else %}Not uploaded yet.{% endif %} The report supplies each course's number, instructors and,
+        through its subject, department. A new upload replaces the previous one.</p>
+      <button type="submit">Upload</button>
+    </form>
+  </section>
+
+  <h2 class="section-h">Subjects and departments</h2>
   <form method="post" action="{{ url_for('subjects_save') }}" class="settings">
     <div class="table-wrap">
       <table class="courses">
@@ -30,7 +45,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="3">No subjects yet. Upload the Course History report on the All courses page, or add one below.</td></tr>
+            <tr><td colspan="3">No subjects yet. Upload the Course History report above, or add one below.</td></tr>
           {% endfor %}
         </tbody>
       </table>

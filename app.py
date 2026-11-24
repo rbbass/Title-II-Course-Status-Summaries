@@ -60,7 +60,17 @@ SORTS = {
     "dept": (lambda c: (c["dept"] or "~", c["course"].lower()), False),  # unassigned last
 }
 
-DEPARTMENTS = ["CEE", "CS", "ECE", "ETM", "MME"]
+# Departments until changed on the Departments page (saved as departments.json in the data folder).
+DEFAULT_DEPARTMENTS = {
+    "CEE": "Civil & Environmental Engineering",
+    "CS": "Computer Science",
+    "ECE": "Electrical & Computer Engineering",
+    "ETM": "Engineering & Technology Management",
+    "MME": "Mechanical & Materials Engineering",
+}
+DEPARTMENT_LIST_NAME = "departments.json"
+DEPT_CODE_RE = re.compile(r"[A-Z]{2,6}")
+RESERVED_DEPT_CODES = {"OTHER", "NONE"}  # the "Other" compilation folder and the "No department" choice
 
 # Terms in calendar order. The academic year starts in Fall: Fall 2026 – Summer 2027 is 2026–27.
 SEASONS = {"Winter": 0, "Spring": 1, "Summer": 2, "Fall": 3}
@@ -105,6 +115,26 @@ COMPILATIONS_DIR = "Department Instructional Digital Resource Reports"
 def compilations_dir(dept: str) -> Path:
     """Where compilation reports for a department (or "Other") are saved, in the shared data folder."""
     return data_dir() / COMPILATIONS_DIR / f"Course Accessibility Compilation Reports - {dept}"
+
+
+def department_names() -> dict[str, str]:
+    """{short name: full name}, alphabetical by short name."""
+    try:
+        names = json.loads((data_dir() / DEPARTMENT_LIST_NAME).read_text(encoding="utf-8"))
+        if not isinstance(names, dict):  # an empty list is kept: every department was removed
+            raise ValueError
+    except (OSError, ValueError):
+        names = DEFAULT_DEPARTMENTS
+    return dict(sorted(names.items()))
+
+
+def save_department_names(names: dict[str, str]) -> None:
+    (data_dir() / DEPARTMENT_LIST_NAME).write_text(json.dumps(dict(sorted(names.items())), indent=2) + "\n",
+                                                   encoding="utf-8")
+
+
+def dept_codes() -> list[str]:
+    return list(department_names())
 
 
 def departments_file() -> Path:
@@ -159,6 +189,7 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
     departments = load_departments()
     history = course_history.load(data_dir())
     subjects = course_history.load_subjects(data_dir())
+    codes = dept_codes()
     for course, snaps in report_store.courses(root).items():
         try:
             latest = load_snapshot(snaps[-1])
@@ -169,7 +200,7 @@ def load_all() -> tuple[list[dict], list[tuple[str, str]]]:
         name, term = split_term(course)
         # Course number, instructor and department come from the Course History report when the
         # course is in it; otherwise the department is whatever was chosen in the Dept. column.
-        info = (course_history.lookup(history, name, term["season"], term["year"], subjects, DEPARTMENTS)
+        info = (course_history.lookup(history, name, term["season"], term["year"], subjects, codes)
                 if term else None)
         instructors = info["instructors"] if info else []
         rows.append({"course": course, "name": name, "term": term, "info": info,
@@ -325,9 +356,8 @@ def sorted_courses() -> tuple[list[dict], list[tuple[str, str]], str, bool]:
 def index():
     courses, errors, sort, reverse = sorted_courses()
     return render_template("index.html", courses=courses, errors=errors, sort=sort,
-                           direction="desc" if reverse else "asc", reports_dir=reports_dir(), departments=DEPARTMENTS,
+                           direction="desc" if reverse else "asc", reports_dir=reports_dir(), departments=dept_codes(),
                            term_groups=term_groups(courses), any_without_term=any(not c["term"] for c in courses),
-                           history=course_history.load(data_dir()), matched=sum(1 for c in courses if c["info"]),
                            mail=gmail_source.status(), settings=gmail_source.load_settings())
 
 
@@ -340,7 +370,7 @@ def departments():
         if not key.startswith("dept::"):
             continue
         course = key.removeprefix("dept::")
-        if course not in known or (value and value not in DEPARTMENTS):
+        if course not in known or (value and value not in dept_codes()):
             abort(400)
         if value:
             mapping[course] = value
@@ -373,20 +403,149 @@ def course_history_upload():
             matched = sum(1 for c in courses if c["info"])
             flash(f"Loaded {len(records):,} sections from {name}. Matched {matched} of {len(courses)} "
                   f"course{'s' if len(courses) != 1 else ''}.", "ok")
-    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
+    return redirect(url_for("subjects"))
 
 
-# --------------------------------------------------------------------------- routes: subjects
+# --------------------------------------------------------------------------- routes: subjects, departments
+
+def subject_rows(codes: list[str]) -> list[dict]:
+    """Every subject in the Course History report or the saved mapping, with its section count and department."""
+    history = course_history.load(data_dir())
+    mapping = course_history.load_subjects(data_dir())
+    counts = course_history.subject_counts(history)
+    return [{"subject": s, "sections": counts.get(s, 0), "dept": course_history.department(s, mapping, codes)}
+            for s in sorted(set(counts) | set(mapping))]
+
 
 @app.get("/subjects")
 def subjects():
     """Subject → department mapping for courses matched in the Course History report."""
+    codes = dept_codes()
+    history = course_history.load(data_dir())
+    matched = total = 0
+    if history:
+        courses, _ = load_all()
+        matched, total = sum(1 for c in courses if c["info"]), len(courses)
+    return render_template("subjects.html", rows=subject_rows(codes), departments=codes,
+                           history=history, matched=matched, total=total)
+
+
+@app.get("/departments")
+def departments_page():
+    """The departments, each with its full name and the subjects that belong to it."""
+    names = department_names()
+    rows = subject_rows(list(names))
+    courses, _ = load_all()
+    return render_template("departments.html", departments=[
+        {"code": code, "name": name, "subjects": [r["subject"] for r in rows if r["dept"] == code],
+         "courses": sum(1 for c in courses if c["dept"] == code)}
+        for code, name in names.items()])
+
+
+def department_form_error(code: str, name: str, names: dict[str, str], current: str | None = None) -> str | None:
+    """Why a short name / full name pair can't be saved, or None. `current` is the department being renamed."""
+    if not DEPT_CODE_RE.fullmatch(code) or code in RESERVED_DEPT_CODES:
+        return "The short name must be 2 to 6 letters, e.g. BME, and can't be “Other” or “None”."
+    if code in names and code != current:
+        return f"{code} is already a department ({names[code]})."
+    if not name or len(name) > 100:
+        return "Enter the department's full name, e.g. Biomedical Engineering."
+    return None
+
+
+def reassign_department(old: str, new: str) -> tuple[int, int]:
+    """Move the subjects and courses assigned to department `old` to `new` ("" for none).
+
+    Returns (subjects, courses) changed. Subjects that map to `old` only because they share its name
+    (ECE → ECE) are given an explicit entry, so they follow a rename.
+    """
+    codes = dept_codes()
     mapping = course_history.load_subjects(data_dir())
-    counts = course_history.subject_counts(course_history.load(data_dir()))
-    rows = [{"subject": s, "sections": counts.get(s, 0),
-             "dept": course_history.department(s, mapping, DEPARTMENTS)}
-            for s in sorted(set(counts) | set(mapping))]
-    return render_template("subjects.html", rows=rows, departments=DEPARTMENTS)
+    moved_subjects = 0
+    for r in subject_rows(codes):
+        if r["dept"] == old:
+            mapping[r["subject"]] = new
+            moved_subjects += 1
+    if moved_subjects:
+        course_history.save_subjects(data_dir(), mapping)
+    by_course = load_departments()
+    moved = [c for c, d in by_course.items() if d == old]
+    for c in moved:
+        if new:
+            by_course[c] = new
+        else:
+            del by_course[c]
+    if moved:
+        save_departments(by_course)
+    return moved_subjects, len(moved)
+
+
+@app.post("/departments/add")
+def departments_add():
+    code = request.form.get("code", "").strip().upper()
+    name = " ".join(request.form.get("name", "").split())
+    names = department_names()
+    error = department_form_error(code, name, names)
+    if error:
+        flash(error, "error")
+    else:
+        names[code] = name
+        save_department_names(names)
+        flash(f"Added {code} – {name}. Assign its subjects on the Subjects page. For its resource inventory, "
+              f"create a Google Sheet named “{sheets_inventory.NAME.format(dept=code)}” on the shared drive.", "ok")
+    return redirect(url_for("departments_page"))
+
+
+@app.post("/departments/<old>/rename")
+def departments_rename(old: str):
+    names = department_names()
+    if old not in names:
+        abort(404)
+    code = request.form.get("code", "").strip().upper()
+    name = " ".join(request.form.get("name", "").split())
+    error = department_form_error(code, name, names, current=old)
+    if error:
+        flash(f"{old} not renamed: {error}", "error")
+        return redirect(url_for("departments_page"))
+    if code == old:
+        names[old] = name
+        save_department_names(names)
+        flash(f"Renamed {old} to {old} – {name}.", "ok")
+        return redirect(url_for("departments_page"))
+
+    # A new short name: carry its subjects, courses and compilation folder over.
+    subjects_moved, courses_moved = reassign_department(old, code)
+    names = {(code if k == old else k): (name if k == old else v) for k, v in names.items()}
+    save_department_names(names)
+    notes = [f"{subjects_moved} subject{'s' if subjects_moved != 1 else ''} and {courses_moved} course"
+             f"{'s' if courses_moved != 1 else ''} with a chosen department moved over"]
+    src, dst = compilations_dir(old), compilations_dir(code)
+    if src.is_dir() and not dst.exists():
+        try:
+            src.rename(dst)
+            notes.append(f"its compilation folder is now “{dst.name}”")
+        except OSError as e:
+            notes.append(f"its compilation folder couldn't be renamed ({e.strerror or e}); rename “{src.name}” "
+                         f"to “{dst.name}” by hand")
+    elif src.is_dir():
+        notes.append(f"“{dst.name}” already exists, so “{src.name}” was left as it is")
+    notes.append(f"rename its Google Sheet to “{sheets_inventory.NAME.format(dept=code)}” by hand")
+    flash(f"Renamed {old} to {code} – {name}: " + "; ".join(notes) + ".", "ok")
+    return redirect(url_for("departments_page"))
+
+
+@app.post("/departments/<code>/remove")
+def departments_remove(code: str):
+    names = department_names()
+    if code not in names:
+        abort(404)
+    subjects_moved, courses_moved = reassign_department(code, "")
+    name = names.pop(code)
+    save_department_names(names)
+    flash(f"Removed {code} – {name}. {subjects_moved} subject{'s' if subjects_moved != 1 else ''} and "
+          f"{courses_moved} course{'s' if courses_moved != 1 else ''} with a chosen department now have none. "
+          "Any compilation folder or Google Sheet it had is left on the shared drive.", "ok")
+    return redirect(url_for("departments_page"))
 
 
 @app.post("/subjects")
@@ -398,10 +557,11 @@ def subjects_save():
     if new:
         form[f"subject::{new}"] = form.get("new_dept", "")
     form.pop("new_dept", None)
+    codes = dept_codes()
     for key, value in form.items():
         subject = key.removeprefix("subject::").strip().upper()
         if not key.startswith("subject::") or not re.fullmatch(r"[A-Z]{1,6}", subject) \
-                or (value and value not in DEPARTMENTS):
+                or (value and value not in codes):
             abort(400)
         mapping[subject] = value  # "" records "no department", overriding a same-named one
     course_history.save_subjects(data_dir(), mapping)
@@ -481,17 +641,50 @@ def course_download(course: str):
     return html_download(html, f"{ar.slugify(ctx['course'])}-{ctx['snap'].taken:%Y-%m-%d}.html")
 
 
-@app.get("/compilation")
-def compilation():
-    """One self-contained HTML file with the latest report of each selected course."""
-    selected = request.args.getlist("course")
+def checked_courses() -> list[dict]:
+    """The courses checked on the All courses page (the request's "course" values), in table order."""
     rows, _ = load_all()
     by_name = {r["course"]: r for r in rows}
-    chosen = [by_name[name] for name in dict.fromkeys(selected) if name in by_name]  # keep table order
+    return [by_name[name] for name in dict.fromkeys(request.args.getlist("course")) if name in by_name]
+
+
+def back_to_index():
+    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
+
+
+@app.get("/compilation")
+def compilation():
+    """Save a compilation of the checked courses to the folder of the department chosen under
+    "Select by Department", or "Other" when none is."""
+    chosen = checked_courses()
     if not chosen:
         flash("Select at least one course for the compilation report.", "error")
-        return redirect(url_for("index"))
+    else:
+        dept = request.args.get("dept", "")
+        save_compilation(chosen, dept if dept in dept_codes() else "Other")
+    return back_to_index()
 
+
+@app.post("/generate-all")
+def generate_all():
+    """For every department, save a compilation of its courses and update its resource inventory; courses
+    with no department go into an "Other" compilation."""
+    courses, _, _, _ = sorted_courses()
+    if not courses:
+        flash("There are no courses to report on yet.", "error")
+        return back_to_index()
+    codes = dept_codes()
+    for dept in codes + ["Other"]:
+        group = [c for c in courses if (c["dept"] == dept if dept != "Other" else c["dept"] not in codes)]
+        if group:
+            save_compilation(group, dept)
+    write_inventory(courses)
+    return back_to_index()
+
+
+def save_compilation(chosen: list[dict], dept: str) -> None:
+    """Write one self-contained HTML file with the latest report of each course to the department's
+    folder on the shared drive, and flash where it went."""
     sections = []
     for n, row in enumerate(chosen, 1):
         ctx = report_context(row["course"], None, uid=f"c{n}-")
@@ -509,9 +702,7 @@ def compilation():
     html = render_template("compilation.html", rows=chosen, sections=sections, totals=totals,
                            css=inline_css(), generated=now)
 
-    # Saved to the shared drive, in the folder for the department chosen under "Select by Department".
-    dept = request.args.get("dept", "")
-    folder = compilations_dir(dept if dept in DEPARTMENTS else "Other")
+    folder = compilations_dir(dept)
     stem = f"course-accessibility-compilation-{now:%Y-%m-%d_%H%M%S}"
     path = folder / f"{stem}.html"
     try:
@@ -522,16 +713,16 @@ def compilation():
             path = folder / f"{stem}-{n}.html"
         path.write_text(html, encoding="utf-8")
     except OSError as e:
-        flash(f"Couldn't save the compilation report to {folder}: {e.strerror or e}", "error")
+        flash(f"{dept}: couldn't save the compilation report to {folder}: {e.strerror or e}", "error")
     else:
-        flash(f"Saved the compilation report of {len(chosen)} course{'s' if len(chosen) != 1 else ''} "
+        flash(f"{dept}: saved the compilation report of {len(chosen)} course{'s' if len(chosen) != 1 else ''} "
               f"to {path}", "ok")
-    return redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
 
 
-def inventory_score(s: dict) -> float | None:
-    """A report's Overall score, or None for a course with no files or scores yet (YuJa reports those as 0)."""
-    return s["overall"] if s["processed"] or s["months"] else None
+def no_files(s: dict) -> bool:
+    """A course with no files has nothing to make accessible, so the inventory counts it as Completed
+    (YuJa reports its Overall score as 0, with "N/A" months)."""
+    return not s["processed"] and not s["months"]
 
 
 def priority(score: float | None) -> str:
@@ -548,30 +739,38 @@ def priority(score: float | None) -> str:
 @app.get("/inventory")
 def inventory():
     """Put the checked courses into each one's department inventory Google Sheet (see sheets_inventory.py)."""
-    selected = request.args.getlist("course")
-    rows, _ = load_all()
-    by_name = {r["course"]: r for r in rows}
-    chosen = [by_name[name] for name in dict.fromkeys(selected) if name in by_name]
-    back = redirect(url_for("index", sort=request.args.get("sort"), dir=request.args.get("dir")))
+    chosen = checked_courses()
     if not chosen:
         flash("Select at least one course for the Department Resource Inventory.", "error")
-        return back
+    else:
+        write_inventory(chosen)
+    return back_to_index()
 
+
+def write_inventory(chosen: list[dict]) -> None:
+    """Add or update the courses in their departments' inventory Google Sheets, flashing the outcome."""
     by_dept: dict[str, list[dict]] = {}
     no_dept = []
+    codes = dept_codes()
     for c in chosen:
-        if c["dept"] not in DEPARTMENTS:
+        if c["dept"] not in codes:
             no_dept.append(c["label"])
             continue
-        score = inventory_score(c["s"])
-        # The first report scoring 80 or more, by when it was received.
-        first_confirmed = next((r["snap"].taken for r in load_course(c["course"])
-                                if (inventory_score(r["s"]) or 0) >= 80), None)
+        history = load_course(c["course"])
+        if no_files(c["s"]):
+            # Completed and confirmed as of the first report with no files.
+            pri, confirmed = "Completed", True
+            first_confirmed = next((r["snap"].taken for r in history if no_files(r["s"])), None)
+        else:
+            score = c["s"]["overall"]
+            pri, confirmed = priority(score), None if score is None else score >= 80
+            # The first report scoring 80 or more, by when it was received.
+            first_confirmed = next((r["snap"].taken for r in history if not no_files(r["s"])
+                                    and r["s"]["overall"] is not None and r["s"]["overall"] >= 80), None)
         by_dept.setdefault(c["dept"], []).append({
             "course": c["label"], "term": c["term"]["label"] if c["term"] else "",
-            "instructor": c["instructors"], "priority": priority(score),
-            "needs_review": None if score is None else score < 80,
-            "confirmed": None if score is None else score >= 80,
+            "instructor": c["instructors"], "priority": pri,
+            "needs_review": None if confirmed is None else not confirmed, "confirmed": confirmed,
             "date": first_confirmed.date() if first_confirmed else None})
 
     if by_dept:
@@ -593,8 +792,8 @@ def inventory():
                   f"“{name}”.", "ok")
     if no_dept:
         flash(f"Skipped {len(no_dept)} course{'s' if len(no_dept) != 1 else ''} with no department: "
-              + ", ".join(no_dept) + ". Choose a department in the Dept. column, then try again.", "error")
-    return back
+              + ", ".join(no_dept) + " (not added to an inventory). Choose a department in the Dept. column, "
+              "then try again.", "error")
 
 
 @app.post("/course/<course>/delete")

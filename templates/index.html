@@ -38,11 +38,17 @@
   </div>
 
   {% if courses %}
+  <form id="generate-all" method="post" class="table-toolbar"
+        action="{{ url_for('generate_all', sort=request.args.get('sort'), dir=request.args.get('dir')) }}">
+    <button type="submit" aria-describedby="generate-all-hint">Generate All Reports for All Departments</button>
+    <span id="generate-all-hint" class="sub-inline">Every course, checked or not: a compilation report for each
+      department (and “Other” for courses with none), and each department's resource inventory.</span>
+  </form>
   <form id="compile" method="get" action="{{ url_for('compilation') }}">
   <div class="table-toolbar">
     {% for key in ("sort", "dir") %}{% if request.args.get(key) %}
       <input type="hidden" name="{{ key }}" value="{{ request.args.get(key) }}">{% endif %}{% endfor %}
-    <button type="submit" aria-describedby="compile-hint">Generate Compilation Report</button>
+    <button type="submit" aria-describedby="compile-hint">Generate Department Compilation Report</button>
     <span id="compile-hint" class="sub-inline">Saved to the shared drive, in the folder for the department
       selected below, or in “Other” if none is selected.</span>
     <span id="selected-count" class="sub-inline" role="status" aria-live="polite"></span>
@@ -54,17 +60,6 @@
       Resource Inventory</button>
     <span id="inventory-hint" class="sub-inline">Adds the checked courses to each one's department
       Instructional Digital Resource Inventory Google Sheet, updating courses already there.</span>
-  </div>
-  {# These controls belong to history-form (below), since forms can't nest. #}
-  <div class="table-toolbar">
-    <label for="history-file">Upload latest Course History - S0041.xlsx report</label>
-    <input type="file" id="history-file" name="history" form="history-form" accept=".xlsx" required
-           aria-describedby="history-status">
-    <button type="submit" form="history-form" class="secondary">Upload</button>
-    <span id="history-status" class="sub-inline">
-      {%- if history %}Using {{ history.source }}, uploaded {{ history.uploaded|day }}: {{ history.records|length|num }}
-        sections, {{ matched }} of {{ courses|length }} courses matched.
-      {%- else %}Not uploaded yet. It supplies course numbers, instructors and departments.{% endif %}</span>
   </div>
   <div class="table-toolbar">
     <label for="select-dept">Select by Department</label>
@@ -154,10 +149,7 @@
   </div>
   </form>
   {# The Dept. dropdowns belong to this form (via form="dept-form"), so they don't ride along with the compilation. #}
-  <form id="dept-form" method="post" action="{{ url_for('departments', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>
-  <form id="history-form" method="post" enctype="multipart/form-data"
-        action="{{ url_for('course_history_upload', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>
-  <script>
+  <form id="dept-form" method="post" action="{{ url_for('departments', sort=request.args.get('sort'), dir=request.args.get('dir')) }}"></form>  <script>
     // Save a department as soon as it's chosen.
     (() => {
       const status = document.getElementById("dept-status");

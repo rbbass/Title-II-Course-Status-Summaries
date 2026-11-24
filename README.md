@@ -18,10 +18,14 @@ python -m venv .venv
 ```
 
 - **All courses** — each course's latest report, with the change since its previous report. Sortable.
-  Assign each course a department (CEE, CS, ECE, ETM, MME) in the **Dept.** column; choices save
-  immediately to `course_departments.json`.
-  Check courses (or the header checkbox for all) and click **Generate Compilation Report** to download
-  one self-contained HTML file: an overview table with totals, then each selected course's latest report.
+  Assign each course a department in the **Dept.** column; choices save immediately to
+  `course_departments.json`.
+  Check courses (or the header checkbox for all) and click **Generate Department Compilation Report** to
+  save one self-contained HTML file (an overview table with totals, then each selected course's latest
+  report) to `Department Instructional Digital Resource Reports\Course Accessibility Compilation Reports -
+  <dept>` in the data folder, for the department chosen under Select by Department, or `- Other`.
+  **Generate All Reports for All Departments** does both reports for every course, checked or not: a
+  compilation per department (plus Other for courses with none) and every department's inventory.
   **Generate Department Resource Inventory** writes the checked courses into each one's department
   Google Sheet, **Instructional Digital Resource Inventory - &lt;dept&gt;** (found by name on Google Drive),
   on its "Department Resource Inventory" sheet. A course already there (same Course Name and Term) is
@@ -34,6 +38,12 @@ python -m venv .venv
 - **Download report (HTML)** — a single self-contained `.html` file of the report you're viewing (styles and
   charts inline, no scripts or external links) to email or share. Its history stops at that report.
   Recipients can open it in any browser, or print it to PDF.
+- **Subjects** — upload the Course History report (below) and map each subject to a department.
+- **Departments** — the departments with their full names, subjects and course counts; add, rename or
+  remove them here (saved as `departments.json` in the data folder). A new department needs its own
+  inventory Google Sheet. A new short name carries the department's subjects, chosen course
+  departments and compilation folder over; its Google Sheet is renamed by hand. Removing a department
+  leaves its subjects and courses with none, and doesn't delete anything on the shared drive.
 - **Email** — pull reports from a Gmail inbox (below).
 - **Settings** — choose the data folder (below).
 - **Add reports by hand** — upload exports on the home page, or drop them into `CourseReports/`; they're
@@ -43,7 +53,7 @@ The server listens on `127.0.0.1` only.
 
 ## Course History report
 
-Upload the registrar's **Course History - S0041.xlsx** on the All courses page to fill in each course's
+Upload the registrar's **Course History - S0041.xlsx** on the Subjects page to fill in each course's
 number (e.g. EE 347), instructor and department. A report named "Power Systems I 001 Fall 2026" matches
 rows titled POWER SYSTEMS I, section 001, term 202604; cross-listed rows are combined (EE 430/530).
 Matched courses are listed by number, and their department comes from the Subject column, mapped on

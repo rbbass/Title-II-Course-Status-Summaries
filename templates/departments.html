@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Departments · Course Accessibility Reports{% endblock %}
+
+{% block content %}
+  <h1>Departments</h1>
+  <p class="lede">The departments courses are reported under. Each has its own compilation report folder and
+    resource inventory on the shared drive; which subjects belong to each is set on the
+    <a href="{{ url_for('subjects') }}">Subjects</a> page.</p>
+
+  <section class="upload" aria-labelledby="add-dept-h">
+    <h2 id="add-dept-h">Add a department</h2>
+    <form method="post" action="{{ url_for('departments_add') }}" class="settings add-dept">
+      <label for="dept-code">Short name</label>
+      <input type="text" id="dept-code" name="code" required pattern="[A-Za-z]{2,6}" maxlength="6"
+             autocomplete="off" spellcheck="false" aria-describedby="dept-code-hint">
+      <p class="hint" id="dept-code-hint">2 to 6 letters, e.g. BME. It names the department's compilation folder
+        and inventory spreadsheet.</p>
+      <label for="dept-name">Full name</label>
+      <input type="text" id="dept-name" name="name" required maxlength="100" autocomplete="off"
+             aria-describedby="dept-name-hint">
+      <p class="hint" id="dept-name-hint">E.g. Biomedical Engineering.</p>
+      <p><button type="submit">Add department</button></p>
+    </form>
+  </section>
+
+  <h2 class="section-h">All departments</h2>
+  <div class="table-wrap">
+    <table class="courses">
+      <caption class="visually-hidden">Departments, with their full names and subjects</caption>
+      <thead>
+        <tr>
+          <th scope="col">Short name</th>
+          <th scope="col">Full name</th>
+          <th scope="col">Subjects</th>
+          <th scope="col" class="num">Courses</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in departments %}
+          <tr>
+            <th scope="row">{{ d.code }}</th>
+            <td>{{ d.name }}</td>
+            <td>{{ d.subjects|join(", ") if d.subjects else "None yet" }}</td>
+            <td class="num">{{ d.courses }}</td>
+            <td class="dept-actions">
+              <details>
+                <summary>Rename or remove<span class="visually-hidden"> {{ d.code }}</span></summary>
+                <form method="post" action="{{ url_for('departments_rename', old=d.code) }}" class="settings">
+                  <label for="code-{{ loop.index }}">Short name</label>
+                  <input type="text" id="code-{{ loop.index }}" name="code" value="{{ d.code }}" required
+                         pattern="[A-Za-z]{2,6}" maxlength="6" autocomplete="off" spellcheck="false" class="code">
+                  <label for="name-{{ loop.index }}">Full name</label>
+                  <input type="text" id="name-{{ loop.index }}" name="name" value="{{ d.name }}" required
+                         maxlength="100" autocomplete="off">
+                  <p class="hint">A new short name moves its subjects, courses and compilation folder over.
+                    Rename its Google Sheet by hand.</p>
+                  <p><button type="submit" class="small">Save</button></p>
+                </form>
+                <form method="post" action="{{ url_for('departments_remove', code=d.code) }}" class="remove-dept"
+                      data-confirm="Remove {{ d.code }} – {{ d.name }}?{% if d.subjects or d.courses %} Its {{ d.subjects|length }} subject{{ 's' if d.subjects|length != 1 }} and {{ d.courses }} course{{ 's' if d.courses != 1 }} will have no department.{% endif %} Any compilation folder or Google Sheet it has stays on the shared drive.">
+                  <button type="submit" class="small danger">Remove {{ d.code }}</button>
+                </form>
+              </details>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">No departments. Add one above.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <script>
+    document.querySelectorAll("form.remove-dept").forEach(form => {
+      form.addEventListener("submit", e => { if (!confirm(form.dataset.confirm)) e.preventDefault(); });
+    });
+  </script>
+{% endblock %}
