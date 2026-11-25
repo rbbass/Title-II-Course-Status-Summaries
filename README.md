@@ -13,28 +13,32 @@ python -m venv .venv
 ## Web app
 
 ```powershell
-.venv\Scripts\python app.py            # then open the address it prints (default http://127.0.0.1:5077)
+.venv\Scripts\python app.py            # then open the address it prints
 .venv\Scripts\python app.py --debug    # auto-reload while developing
 ```
 
-- **All courses** — each course's latest report, with the change since its previous report. Sortable.
-  Assign each course a department in the **Dept.** column; choices save immediately to
-  `course_departments.json`.
-  Check courses (or the header checkbox for all) and click **Generate Department Compilation Report** to
-  save one self-contained HTML file (an overview table with totals, then each selected course's latest
-  report) to `Department Instructional Digital Resource Reports\Course Accessibility Compilation Reports -
-  <dept>` in the data folder, for the department chosen under Select by Department, or `- Other`.
-  **Generate All Reports for All Departments** does both reports for every course, checked or not: a
-  compilation per department (plus Other for courses with none) and every department's inventory.
-  **Generate Department Resource Inventory** writes the checked courses into each one's department
-  Google Sheet, **Instructional Digital Resource Inventory - &lt;dept&gt;** (found by name on Google Drive),
-  on its "Department Resource Inventory" sheet. A course already there (same Course Name and Term) is
-  updated; others are added below the last row, and the sheet's table is extended to cover them. Archive
-  is never written, and blank values never overwrite what's in the sheet. Courses with no department are
-  skipped. See [Writing to Google Sheets](#writing-to-google-sheets) for the one-time setup.
+It serves on the first free port from 5077 (so a second copy gets 5078); `--port <n>` picks one, and
+`--data-dir <folder>` uses another data folder for that run.
+
+- **All courses** — each course's latest report: course number, term (F26, W27, …), instructor, overall
+  score and its change since the previous report, files, remediated, severe issues, latest report date
+  and department. Sort by any column.
+  - **Dept.** — courses matched in the Course History report take their department from their subject;
+    for the rest, choose one here (saved immediately to `course_departments.json`).
+  - **Select by Department** and **Select by Academic year and Term** check the matching courses; used
+    together they combine (e.g. ECE courses in F26). Academic years run Fall through Summer.
+  - **Generate All Reports for All Departments** — for every course, checked or not: a compilation
+    report for each department (plus Other for courses with none) and every department's inventory.
+  - **Generate Department Compilation Report** — one self-contained HTML file of the checked courses
+    (an overview table with totals, then each course's latest report), saved to
+    `Department Instructional Digital Resource Reports\Course Accessibility Compilation Reports - <dept>`
+    in the data folder, for the department chosen under Select by Department, or `- Other` if none.
+    Files are named by date and time and never overwrite one another.
+  - **Generate Department Resource Inventory** — writes the checked courses into their departments'
+    Google Sheets (see [Department Resource Inventory](#department-resource-inventory)).
 - **Course page** — pick any report received for the course. Shows changes since the previous report, a
   history chart and table across all reports, the monthly score trend, where-to-start priorities, file
-  types, and severe/major/minor issue tables.
+  types, and severe/major/minor issue tables. A report stored by mistake can be deleted here.
 - **Download report (HTML)** — a single self-contained `.html` file of the report you're viewing (styles and
   charts inline, no scripts or external links) to email or share. Its history stops at that report.
   Recipients can open it in any browser, or print it to PDF.
@@ -54,20 +58,56 @@ The server listens on `127.0.0.1` only.
 ## Course History report
 
 Upload the registrar's **Course History - S0041.xlsx** on the Subjects page to fill in each course's
-number (e.g. EE 347), instructor and department. A report named "Power Systems I 001 Fall 2026" matches
-rows titled POWER SYSTEMS I, section 001, term 202604; cross-listed rows are combined (EE 430/530).
-Matched courses are listed by number, and their department comes from the Subject column, mapped on
-the **Subjects** page (saved as `subject_departments.json` in the data folder; ECE and EE → ECE to start).
-Courses not in the spreadsheet keep their name and the Dept. dropdown.
+number (e.g. EE 347), instructor (shown as R. Bass) and department. A new upload replaces the last one.
+
+A report named "Power Systems I 001 Fall 2026" matches rows titled POWER SYSTEMS I, section 001, term
+202604 (YYYYTT: 01 Winter, 02 Spring, 03 Summer, 04 Fall). Punctuation is ignored, so
+"Sem_ Intro Research & Training" matches SEM: INTRO RESEARCH & TRAINING, and a name ending in a course
+and section, like "Lab For Ece 221 ECE-221L-002", also matches on that subject and number.
+Cross-listed rows are combined (EE 430/530), and two sections of a course in one term get their section
+number (ECE 221L-001). A matched course's department comes from its subject, mapped on the **Subjects**
+page (saved as `subject_departments.json`); a subject named like a department, such as ECE, maps to it
+unless set otherwise. Courses not in the spreadsheet keep their name and the Dept. dropdown.
 
 Only the needed columns are kept, in `course_history.json` in the data folder. The `.xlsx` itself is
 git-ignored: it names instructors and this repo is public.
 
+## Department Resource Inventory
+
+Each department has a Google Sheet, **Instructional Digital Resource Inventory - &lt;dept&gt;**, found by
+name on Google Drive. Courses go on its "Department Resource Inventory" sheet: a course already listed
+(same Course Name and Term) is updated, and others are added below the last row, with the sheet's table
+extended to cover them. Courses with no department are skipped.
+
+| Column | Value |
+| --- | --- |
+| Course Name, Term, Instructor Name | e.g. EE 347, F26, R. Bass |
+| Priority Tracking | Overall score above 90: Completed; below 50: First: Highest; 50–90 split evenly into Second, Third, Fourth |
+| Archive | Never written; it's ticked by hand |
+| Needs Review | TRUE when the score is below 80 |
+| Accessibility Confirmed | TRUE when the score is 80 or more |
+| Date Confirmed | Date of the first report scoring 80 or more |
+
+A course with no files (YuJa reports its score as 0) counts as Completed and confirmed, dated by its
+first report with no files. Blank values never overwrite what's in the sheet, so dates typed in by hand
+stay. See [Writing to Google Sheets](#writing-to-google-sheets) for the one-time setup.
+
 ## Shared data folder
 
-The **data folder** holds `CourseReports/` and `course_departments.json`. Choose it on the **Settings**
-page; the choice is saved on that computer in `app_settings.json` (git-ignored). Running from source with
-no choice saved, the project folder is used. `--data-dir <folder>` overrides it for one run.
+The **data folder** holds everything the app shares between its users:
+
+| In the data folder | What |
+| --- | --- |
+| `CourseReports/` | Stored reports (see [How reports are stored](#how-reports-are-stored)) |
+| `Department Instructional Digital Resource Reports/` | Saved compilation reports, a folder per department |
+| `course_departments.json` | Departments chosen in the Dept. column |
+| `departments.json` | The department list (Departments page) |
+| `subject_departments.json` | Subject → department (Subjects page) |
+| `course_history.json` | The needed columns of the last Course History upload |
+
+Choose it on the **Settings** page; the choice is saved on that computer in `app_settings.json`
+(git-ignored). Running from source with no choice saved, the project folder is used, and the files
+above are git-ignored there.
 
 To share reports with colleagues, use a synced folder such as a Google shared drive
 (`G:\Shared drives\MCECS ADA Course Reports`) via Google Drive for desktop, and point everyone's copy of
@@ -126,6 +166,7 @@ CourseReports/
 ```
 
 The course name comes from the export's file name, e.g. `course-report (Power Systems I 001 Fall 2026).json`.
+Characters a folder name can't hold, such as `:` and `/`, become `_` ("Finite Element Mod_anlys 001 Fall 2026").
 
 ## Command line
 
@@ -141,9 +182,11 @@ Writes `<course>.md` plus a `<course>-trend.png` chart (needs matplotlib) per ex
 | --- | --- |
 | `accessibility_report.py` | Parsing and analysis (`summarize()`), Markdown output, CLI |
 | `report_store.py` | Timestamped snapshots per course |
+| `course_history.py` | Course History (.xlsx) import, course matching, subject → department |
 | `gmail_source.py` | Gmail sign-in and attachment import |
-| `app.py` | Flask app, SVG charts |
+| `sheets_inventory.py` | Department Resource Inventory Google Sheets |
+| `app.py` | Flask app: pages, departments, compilations, SVG charts |
 | `app_settings.py` | App and data folder locations |
 | `build.ps1` | Packages the app as a Windows program |
 | `templates/`, `static/` | Pages and styles |
-| `CourseReports/` | Stored reports |
+| `power-systems-i-001-fall-2026.md` | Sample command-line report |

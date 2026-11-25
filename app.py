@@ -938,7 +938,7 @@ def port_free(port: int) -> bool:
 def main() -> None:
     p = argparse.ArgumentParser(description="Serve course accessibility reports locally.")
     p.add_argument("--data-dir", type=Path,
-                   help="folder holding CourseReports/ and course_departments.json, for this run only "
+                   help="shared data folder (CourseReports/, departments and more), for this run only "
                         "(default: the one chosen on the Settings page)")
     p.add_argument("--port", type=int, help=f"port to serve on (default: first free from {DEFAULT_PORT})")
     p.add_argument("--debug", action="store_true", help="auto-reload on code changes")
